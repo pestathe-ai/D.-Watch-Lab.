@@ -41,8 +41,16 @@ Future<WatchAppraisal> runAppraisal({
     inputs.add(PhotoInput(labels[i], bytes, mimeType: mime));
   }
 
+  Future<void> rememberNoSearch() async {
+    if (client.searchUnavailable && settings.webSearch) {
+      final now = await storage.loadSettings();
+      await storage.saveSettings(Settings(
+          apiKey: now.apiKey, model: now.model, webSearch: false));
+    }
+  }
+
   try {
-    return await client.appraise(
+    final r = await client.appraise(
       model: model,
       photos: inputs,
       extraInfo: extraInfo,
@@ -50,6 +58,8 @@ Future<WatchAppraisal> runAppraisal({
       papers: papers,
       webSearch: settings.webSearch,
     );
+    await rememberNoSearch();
+    return r;
   } on GeminiException catch (e) {
     // Modello sparito (Google li ritira): ne cerco uno nuovo e riprovo.
     if (e.message.startsWith('Modello non trovato')) {
@@ -58,7 +68,7 @@ Future<WatchAppraisal> runAppraisal({
           apiKey: settings.apiKey,
           model: fresh,
           webSearch: settings.webSearch));
-      return client.appraise(
+      final r = await client.appraise(
         model: fresh,
         photos: inputs,
         extraInfo: extraInfo,
@@ -66,6 +76,8 @@ Future<WatchAppraisal> runAppraisal({
         papers: papers,
         webSearch: settings.webSearch,
       );
+      await rememberNoSearch();
+      return r;
     }
     rethrow;
   }

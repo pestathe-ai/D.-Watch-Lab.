@@ -15,7 +15,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final keyCtrl = TextEditingController();
   final modelCtrl = TextEditingController();
-  bool webSearch = true;
+  bool webSearch = false;
   bool obscure = true;
   bool busy = false;
   String? status;
@@ -142,7 +142,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Prezzi reali dal web'),
                   subtitle: const Text(
                       'L\'IA cerca su Google prezzi recenti di esemplari '
-                      'venduti. Più precisa, un po\' più lenta.'),
+                      'venduti. Richiede il piano a pagamento di Gemini: con '
+                      'la chiave gratuita lascialo spento.'),
                   value: webSearch,
                   onChanged: (v) {
                     setState(() => webSearch = v);

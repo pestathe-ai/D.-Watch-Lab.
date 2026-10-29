@@ -220,11 +220,30 @@ void main() {
       expect(a.brand, 'Rolex');
     });
 
+    test('429 con ricerca web: riprova senza ricerca', () async {
+      var calls = 0;
+      final client = MockClient((req) async {
+        calls++;
+        final body = jsonDecode(req.body) as Map;
+        if (body.containsKey('tools')) return jsonRes({}, 429);
+        return jsonRes(okBody(), 200);
+      });
+      final g = GeminiClient('K', client: client);
+      final a = await g.appraise(
+          model: 'm', photos: [PhotoInput('Q', Uint8List(1))]);
+      expect(calls, 2);
+      expect(g.searchUnavailable, isTrue);
+      expect(a.brand, 'Rolex');
+    });
+
     test('errori tradotti in italiano', () async {
       final client = MockClient((_) async => http.Response('{}', 429));
       expect(
           () => GeminiClient('K', client: client)
-              .appraise(model: 'm', photos: [PhotoInput('Q', Uint8List(1))]),
+              .appraise(
+                  model: 'm',
+                  photos: [PhotoInput('Q', Uint8List(1))],
+                  webSearch: false),
           throwsA(isA<GeminiException>().having(
               (e) => e.message, 'msg', contains('Limite gratuito'))));
     });

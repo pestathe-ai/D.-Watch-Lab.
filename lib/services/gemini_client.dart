@@ -26,6 +26,9 @@ class GeminiClient {
   final http.Client _http;
   final String apiKey;
 
+  /// Diventa true se la ricerca web non era disponibile ed è stata saltata.
+  bool searchUnavailable = false;
+
   GeminiClient(this.apiKey, {http.Client? client})
       : _http = client ?? http.Client();
 
@@ -65,6 +68,7 @@ class GeminiClient {
     } on GeminiException catch (e) {
       // Se la ricerca web non è disponibile sul piano/modello, riprova senza.
       if (webSearch && e.message.contains('[tool]')) {
+        searchUnavailable = true;
         return _appraise(model, photos, extraInfo, box, papers, false);
       }
       rethrow;
@@ -119,6 +123,11 @@ class GeminiClient {
     if (res.statusCode != 200) {
       final msg = _explain(res);
       final lower = res.body.toLowerCase();
+      // Sul piano gratuito la ricerca Google non è inclusa: Google risponde
+      // 429 (quota zero) o 400. In entrambi i casi riprovo senza ricerca.
+      if (webSearch && res.statusCode == 429) {
+        throw GeminiException('[tool] $msg');
+      }
       if (webSearch &&
           res.statusCode == 400 &&
           (lower.contains('tool') ||
@@ -153,7 +162,8 @@ class GeminiClient {
         return 'Modello non trovato. Nelle Impostazioni tocca "Trova modello".';
       case 429:
         return 'Limite gratuito raggiunto per ora. Aspetta un minuto '
-            '(o fino a domani se è il limite giornaliero) e riprova.';
+            '(o fino a domani se è il limite giornaliero) e riprova.'
+            '${detail.isEmpty ? '' : '\n\nDettaglio Google: ${detail.split('\n').first}'}';
       case 500:
       case 503:
         return 'Il servizio Google è sovraccarico. Riprova tra poco.';

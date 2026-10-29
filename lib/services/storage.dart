@@ -10,7 +10,7 @@ class Settings {
   final String apiKey;
   final String model;
   final bool webSearch;
-  const Settings({this.apiKey = '', this.model = '', this.webSearch = true});
+  const Settings({this.apiKey = '', this.model = '', this.webSearch = false});
 }
 
 class Storage {
@@ -24,7 +24,7 @@ class Storage {
   Future<Settings> loadSettings() async => Settings(
         apiKey: await _prefs.getString(_kKey) ?? '',
         model: await _prefs.getString(_kModel) ?? '',
-        webSearch: await _prefs.getBool(_kWeb) ?? true,
+        webSearch: await _prefs.getBool(_kWeb) ?? false,
       );
 
   Future<void> saveSettings(Settings s) async {
