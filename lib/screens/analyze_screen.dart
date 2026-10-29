@@ -71,7 +71,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     'Calcolo il valore…',
   ];
   int step = 0;
-  String? override;
+  String? statusOverride;
   String? error;
   Timer? timer;
   int run = 0;
@@ -86,7 +86,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     final myRun = ++run;
     setState(() {
       error = null;
-      override = null;
+      statusOverride = null;
       step = 0;
     });
     timer?.cancel();
@@ -102,7 +102,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       box: widget.box,
       papers: widget.papers,
       onStatus: (s) {
-        if (mounted && myRun == run) setState(() => override = s);
+        if (mounted && myRun == run) setState(() => statusOverride = s);
       },
     ).then((r) {
       if (!mounted || myRun != run) return;
@@ -191,7 +191,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
   }
 
   Widget _progress(ThemeData t) {
-    final text = override ?? steps[step];
+    final text = statusOverride ?? steps[step];
     return Container(
       key: const ValueKey('progress'),
       width: double.infinity,

@@ -59,7 +59,6 @@ ThemeData buildTheme() {
     ),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: ZoomPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
     }),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
