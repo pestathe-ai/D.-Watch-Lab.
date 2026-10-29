@@ -1,0 +1,180 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../services/gemini_client.dart';
+import '../services/storage.dart';
+
+class SettingsScreen extends StatefulWidget {
+  final Storage storage;
+  const SettingsScreen({super.key, required this.storage});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  final keyCtrl = TextEditingController();
+  final modelCtrl = TextEditingController();
+  bool webSearch = true;
+  bool obscure = true;
+  bool busy = false;
+  String? status;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = await widget.storage.loadSettings();
+    if (!mounted) return;
+    setState(() {
+      keyCtrl.text = s.apiKey;
+      modelCtrl.text = s.model;
+      webSearch = s.webSearch;
+    });
+  }
+
+  Future<void> _save({bool quiet = false}) async {
+    await widget.storage.saveSettings(Settings(
+        apiKey: keyCtrl.text, model: modelCtrl.text, webSearch: webSearch));
+    if (!quiet && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Impostazioni salvate')));
+    }
+  }
+
+  Future<void> _test() async {
+    if (keyCtrl.text.trim().isEmpty) {
+      setState(() => status = 'Incolla prima la chiave.');
+      return;
+    }
+    setState(() {
+      busy = true;
+      status = null;
+    });
+    try {
+      final model = await GeminiClient(keyCtrl.text.trim()).resolveModel();
+      modelCtrl.text = model;
+      await _save(quiet: true);
+      setState(() => status = '✓ Chiave valida. Modello: $model');
+    } catch (e) {
+      setState(() => status = '✗ $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Impostazioni')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Chiave Google Gemini (gratuita)',
+                      style: t.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '1. Apri aistudio.google.com/apikey e accedi con Google\n'
+                    '2. Tocca "Create API key" e copiala\n'
+                    '3. Incollala qui sotto e tocca "Verifica"',
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(const ClipboardData(
+                          text: 'https://aistudio.google.com/apikey'));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Link copiato: incollalo nel browser')));
+                    },
+                    icon: const Icon(Icons.link),
+                    label: const Text('Copia link'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: keyCtrl,
+                    obscureText: obscure,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: InputDecoration(
+                      hintText: 'Incolla la chiave API',
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                            obscure ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setState(() => obscure = !obscure),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: busy ? null : _test,
+                    child: busy
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Verifica e salva'),
+                  ),
+                  if (status != null) ...[
+                    const SizedBox(height: 10),
+                    Text(status!),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Prezzi reali dal web'),
+                  subtitle: const Text(
+                      'L\'IA cerca su Google prezzi recenti di esemplari '
+                      'venduti. Più precisa, un po\' più lenta.'),
+                  value: webSearch,
+                  onChanged: (v) {
+                    setState(() => webSearch = v);
+                    _save(quiet: true);
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: TextField(
+                    controller: modelCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Modello (automatico)',
+                      helperText:
+                          'Lascia vuoto: viene scelto il migliore disponibile',
+                    ),
+                    onSubmitted: (_) => _save(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Le foto vengono inviate a Google per l\'analisi. Con il piano '
+            'gratuito Google può usarle per migliorare i suoi modelli. '
+            'La stima è indicativa e non sostituisce un perito o '
+            'un\'autenticazione.',
+            style: t.textTheme.bodySmall
+                ?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
