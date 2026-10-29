@@ -9,6 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+http.Response jsonRes(Object body, int code) => http.Response.bytes(
+    utf8.encode(jsonEncode(body)), code,
+    headers: {'content-type': 'application/json; charset=utf-8'});
+
 const sampleJson = '''
 {
   "is_watch": true,
@@ -183,7 +187,7 @@ void main() {
         expect(req.headers['x-goog-api-key'], 'KEY');
         expect(req.url.path, endsWith('/models/gemini-x-flash:generateContent'));
         sent = jsonDecode(req.body) as Map<String, dynamic>;
-        return http.Response(jsonEncode(okBody()), 200);
+        return jsonRes(okBody(), 200);
       });
       final g = GeminiClient('KEY', client: client);
       final a = await g.appraise(
@@ -202,15 +206,13 @@ void main() {
         calls++;
         final body = jsonDecode(req.body) as Map;
         if (body.containsKey('tools')) {
-          return http.Response(
-              jsonEncode({
-                'error': {'message': 'Tool google_search is not supported'}
-              }),
-              400);
+          return jsonRes({
+            'error': {'message': 'Tool google_search is not supported'}
+          }, 400);
         }
         expect(body['generationConfig']['responseMimeType'],
             'application/json');
-        return http.Response(jsonEncode(okBody()), 200);
+        return jsonRes(okBody(), 200);
       });
       final a = await GeminiClient('K', client: client).appraise(
           model: 'm', photos: [PhotoInput('Q', Uint8List(1))]);
@@ -228,16 +230,14 @@ void main() {
     });
 
     test('resolveModel usa l\'elenco dei modelli', () async {
-      final client = MockClient((req) async => http.Response(
-          jsonEncode({
+      final client = MockClient((req) async => jsonRes({
             'models': [
               {
                 'name': 'models/gemini-3.6-flash',
                 'supportedGenerationMethods': ['generateContent']
               }
             ]
-          }),
-          200));
+          }, 200));
       expect(await GeminiClient('K', client: client).resolveModel(),
           'gemini-3.6-flash');
     });

@@ -131,8 +131,8 @@ Map<String, dynamic>? extractJson(String text) {
           if (v is Map) return Map<String, dynamic>.from(v);
         } catch (_) {
           // Prova a ripulire virgole finali.
-          final cleaned =
-              candidate.replaceAll(RegExp(r',\s*([}\]])'), r'$1');
+          final cleaned = candidate.replaceAllMapped(
+              RegExp(r',\s*([}\]])'), (m) => m.group(1)!);
           try {
             final v = jsonDecode(cleaned);
             if (v is Map) return Map<String, dynamic>.from(v);
