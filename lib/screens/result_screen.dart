@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/appraisal.dart';
-import '../services/appraisal_runner.dart';
+import '../services/prompt.dart';
 import '../services/storage.dart';
+import 'analyze_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final Storage storage;
@@ -52,58 +54,101 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   late WatchAppraisal a = widget.appraisal;
   late SavedValuation? saved = widget.saved;
+  late final List<File> photos = [...widget.photos];
+  late final List<String> labels = [...widget.labels];
+  late bool box = widget.box;
+  late bool papers = widget.papers;
+  late final TextEditingController extraCtrl =
+      TextEditingController(text: widget.extraInfo);
+  final picker = ImagePicker();
+
+  /// Ci sono foto o informazioni nuove non ancora valutate.
+  bool pending = false;
   bool busy = false;
   bool changed = false;
 
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  Future<void> _save() async {
-    setState(() => busy = true);
+  bool _hasSlot(PhotoSlot s) => labels.any((l) => l.startsWith(s.label));
+
+  Future<void> _addPhoto(PhotoSlot slot) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(slot.label,
+                  style: Theme.of(ctx).textTheme.titleMedium),
+              subtitle: Text(slot.hint),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Scatta una foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Scegli dalla galleria'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
     try {
-      saved = await widget.storage.add(a, widget.photos,
-          labels: widget.labels,
-          box: widget.box,
-          papers: widget.papers,
-          extraInfo: widget.extraInfo);
-      changed = true;
-      _snack('Aggiunto alla collezione');
+      final x = await picker.pickImage(
+          source: source, maxWidth: 1800, maxHeight: 1800, imageQuality: 88);
+      if (x == null) return;
+      HapticFeedback.selectionClick();
+      setState(() {
+        photos.add(File(x.path));
+        labels.add('${slot.label} (${slot.hint})');
+        pending = true;
+      });
     } catch (e) {
-      _snack('Errore nel salvataggio: $e');
-    } finally {
-      if (mounted) setState(() => busy = false);
+      _snack('Fotocamera non disponibile: $e');
     }
   }
 
   Future<void> _revalue() async {
-    final s = saved;
-    if (s == null) return;
+    final fresh = await analyze(context,
+        storage: widget.storage,
+        photos: photos,
+        labels: labels,
+        extraInfo: extraCtrl.text,
+        box: box,
+        papers: papers);
+    if (fresh == null || !mounted) return;
+    setState(() {
+      a = fresh;
+      pending = false;
+    });
+    if (saved != null) {
+      await _persist(replace: true);
+      _snack('Valore aggiornato');
+    }
+  }
+
+  Future<void> _persist({bool replace = false}) async {
     setState(() => busy = true);
     try {
-      final fresh = await runAppraisal(
-        storage: widget.storage,
-        photos: widget.photos,
-        labels: widget.labels,
-        extraInfo: widget.extraInfo,
-        box: widget.box,
-        papers: widget.papers,
-      );
-      final v = await widget.storage.add(fresh, widget.photos,
-          replaceId: s.id,
-          labels: widget.labels,
-          box: widget.box,
-          papers: widget.papers,
-          extraInfo: widget.extraInfo);
-      setState(() {
-        a = fresh;
-        saved = v;
-        changed = true;
-      });
-      _snack('Valore aggiornato');
-    } on MissingKeyException {
-      _snack('Aggiungi la chiave gratuita nelle Impostazioni.');
+      saved = await widget.storage.add(a, photos,
+          replaceId: replace ? saved?.id : null,
+          labels: labels,
+          box: box,
+          papers: papers,
+          extraInfo: extraCtrl.text);
+      changed = true;
+      HapticFeedback.mediumImpact();
+      if (!replace) _snack('Aggiunto alla collezione');
     } catch (e) {
-      _snack(e.toString());
+      _snack('Errore nel salvataggio: $e');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -134,13 +179,91 @@ class _ResultScreenState extends State<ResultScreen> {
 
   void _copyListing() {
     Clipboard.setData(
-        ClipboardData(text: a.listingText(box: widget.box, papers: widget.papers)));
+        ClipboardData(text: a.listingText(box: box, papers: papers)));
+    HapticFeedback.selectionClick();
     _snack('Testo annuncio copiato');
+  }
+
+  @override
+  void dispose() {
+    extraCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final cards = <Widget>[
+      if (!a.isWatch)
+        const _InfoCard(
+          icon: Icons.help_outline,
+          title: 'Non vedo un orologio',
+          body: 'Riprova con una foto frontale e nitida del quadrante, ben '
+              'illuminata e senza riflessi.',
+        )
+      else ...[
+        _Header(a: a),
+        _PriceCard(a: a),
+        _ImproveCard(
+          slots: photoSlots.skip(1).where((s) => !_hasSlot(s)).toList(),
+          onAdd: _addPhoto,
+          box: box,
+          papers: papers,
+          extraCtrl: extraCtrl,
+          tips: a.morePhotos,
+          onBox: (v) => setState(() {
+            box = v;
+            pending = true;
+          }),
+          onPapers: (v) => setState(() {
+            papers = v;
+            pending = true;
+          }),
+          onExtraChanged: () => setState(() => pending = true),
+        ),
+        if (a.alternatives.isNotEmpty) _AlternativesCard(a: a),
+        _FlagsCard(a: a),
+        _DetailsCard(a: a, box: box, papers: papers),
+        if (saved != null && saved!.timeline.length > 1)
+          _HistoryCard(points: saved!.timeline, currency: a.currency),
+        if (a.comparables.isNotEmpty || a.sources.isNotEmpty)
+          _SourcesCard(a: a),
+        Text(
+          'Stima indicativa generata dall\'IA, non è una perizia né '
+          'un\'autenticazione. Per orologi di valore rivolgiti a un '
+          'rivenditore autorizzato o a un perito.',
+          style: t.textTheme.bodySmall
+              ?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    ];
+
+    final Widget primary;
+    if (pending) {
+      primary = FilledButton.icon(
+        key: const ValueKey('revalue'),
+        onPressed: busy ? null : _revalue,
+        icon: const Icon(Icons.auto_awesome),
+        label: Text('Rivaluta con ${photos.length} '
+            '${photos.length == 1 ? 'foto' : 'foto'}'),
+      );
+    } else if (saved == null) {
+      primary = FilledButton.icon(
+        key: const ValueKey('save'),
+        onPressed: busy || !a.isWatch ? null : _persist,
+        icon: const Icon(Icons.add),
+        label: const Text('Aggiungi alla collezione'),
+      );
+    } else {
+      primary = FilledButton.tonalIcon(
+        key: const ValueKey('update'),
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+        onPressed: busy ? null : _revalue,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Aggiorna il valore'),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -150,6 +273,11 @@ class _ResultScreenState extends State<ResultScreen> {
         appBar: AppBar(
           title: Text(saved != null ? 'Il tuo orologio' : 'Valutazione'),
           actions: [
+            if (a.isWatch)
+              IconButton(
+                  tooltip: 'Copia testo annuncio',
+                  onPressed: _copyListing,
+                  icon: const Icon(Icons.sell_outlined)),
             if (saved != null)
               IconButton(
                   tooltip: 'Elimina',
@@ -157,97 +285,147 @@ class _ResultScreenState extends State<ResultScreen> {
                   icon: const Icon(Icons.delete_outline)),
           ],
         ),
-        body: Stack(
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-              children: [
-                _Gallery(photos: widget.photos, labels: widget.labels),
-                const SizedBox(height: 16),
-                if (!a.isWatch)
-                  _InfoCard(
-                    icon: Icons.help_outline,
-                    title: 'Non vedo un orologio',
-                    body: 'Riprova con una foto frontale e nitida del '
-                        'quadrante, ben illuminata e senza riflessi.',
-                  )
-                else ...[
-                  _Header(a: a),
-                  const SizedBox(height: 14),
-                  _PriceCard(a: a),
-                  if (a.alternatives.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _AlternativesCard(a: a),
-                  ],
-                  const SizedBox(height: 14),
-                  _DetailsCard(a: a, box: widget.box, papers: widget.papers),
-                  const SizedBox(height: 14),
-                  _FlagsCard(a: a),
-                  if (a.morePhotos.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _InfoCard(
-                      icon: Icons.add_a_photo_outlined,
-                      title: 'Per una stima più precisa',
-                      body: a.morePhotos.map((e) => '• $e').join('\n'),
-                    ),
-                  ],
-                  if (saved != null && saved!.timeline.length > 1) ...[
-                    const SizedBox(height: 14),
-                    _HistoryCard(points: saved!.timeline, currency: a.currency),
-                  ],
-                  if (a.comparables.isNotEmpty || a.sources.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _SourcesCard(a: a),
-                  ],
-                  const SizedBox(height: 14),
-                  Text(
-                    'Stima indicativa generata dall\'IA, non è una perizia né '
-                    'un\'autenticazione. Per orologi di valore rivolgiti a un '
-                    'rivenditore autorizzato o a un perito.',
-                    style: t.textTheme.bodySmall
-                        ?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ],
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: Row(
-                children: [
-                  if (a.isWatch)
-                    IconButton.filledTonal(
-                      tooltip: 'Copia testo annuncio',
-                      onPressed: _copyListing,
-                      icon: const Icon(Icons.sell_outlined),
-                      style: IconButton.styleFrom(
-                          minimumSize: const Size(54, 54)),
-                    ),
-                  if (a.isWatch) const SizedBox(width: 10),
-                  Expanded(
-                    child: saved == null
-                        ? FilledButton.icon(
-                            onPressed: busy || !a.isWatch ? null : _save,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Aggiungi alla collezione'),
-                          )
-                        : FilledButton.icon(
-                            onPressed: busy ? null : _revalue,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Aggiorna il valore'),
-                          ),
-                  ),
-                ],
-              ),
-            ),
-            if (busy)
-              const Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black54,
-                  child: Center(child: CircularProgressIndicator()),
+            _Gallery(photos: photos, labels: labels),
+            const SizedBox(height: 16),
+            for (var i = 0; i < cards.length; i++)
+              _FadeIn(
+                delay: Duration(milliseconds: 60 * i),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: cards[i],
                 ),
               ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Comparsa morbida delle schede.
+class _FadeIn extends StatelessWidget {
+  final Duration delay;
+  final Widget child;
+  const _FadeIn({required this.delay, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 380) + delay,
+      curve: Interval(
+          delay.inMilliseconds / (380 + delay.inMilliseconds), 1,
+          curve: Curves.easeOutCubic),
+      builder: (_, v, c) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(0, 16 * (1 - v)), child: c),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ImproveCard extends StatelessWidget {
+  final List<PhotoSlot> slots;
+  final void Function(PhotoSlot) onAdd;
+  final bool box;
+  final bool papers;
+  final TextEditingController extraCtrl;
+  final List<String> tips;
+  final ValueChanged<bool> onBox;
+  final ValueChanged<bool> onPapers;
+  final VoidCallback onExtraChanged;
+
+  const _ImproveCard({
+    required this.slots,
+    required this.onAdd,
+    required this.box,
+    required this.papers,
+    required this.extraCtrl,
+    required this.tips,
+    required this.onBox,
+    required this.onPapers,
+    required this.onExtraChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Card(
+      child: Theme(
+        data: t.copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Icon(Icons.tune, color: t.colorScheme.primary),
+          title: const Text('Migliora la stima'),
+          subtitle: Text(
+            tips.isNotEmpty
+                ? 'Consiglio: ${tips.first}'
+                : 'Aggiungi foto e dettagli, poi rivaluta',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (slots.isNotEmpty) ...[
+              Text('Aggiungi una foto',
+                  style: t.textTheme.labelLarge
+                      ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final s in slots)
+                    ActionChip(
+                      avatar: const Icon(Icons.add_a_photo_outlined, size: 18),
+                      label: Text(s.label),
+                      onPressed: () => onAdd(s),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            Text('Corredo',
+                style: t.textTheme.labelLarge
+                    ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilterChip(
+                    label: const Text('Scatola originale'),
+                    selected: box,
+                    onSelected: onBox),
+                FilterChip(
+                    label: const Text('Garanzia / documenti'),
+                    selected: papers,
+                    onSelected: onPapers),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: extraCtrl,
+              minLines: 1,
+              maxLines: 3,
+              onChanged: (_) => onExtraChanged(),
+              decoration: const InputDecoration(
+                hintText: 'Altri dettagli: anno, revisioni, referenza…',
+              ),
+            ),
           ],
         ),
       ),
@@ -381,10 +559,16 @@ class _PriceCard extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(formatMoney(a.priceLikely, a.currency),
-                  style: t.textTheme.displaySmall?.copyWith(
-                      color: t.colorScheme.primary,
-                      fontWeight: FontWeight.w700)),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: a.priceLikely ?? 0),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (_, v, __) => Text(
+                    a.priceLikely == null ? '—' : formatMoney(v, a.currency),
+                    style: t.textTheme.displaySmall?.copyWith(
+                        color: t.colorScheme.primary,
+                        fontWeight: FontWeight.w700)),
+              ),
             ),
             if (hasRange) ...[
               const SizedBox(height: 14),

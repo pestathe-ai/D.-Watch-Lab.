@@ -148,6 +148,12 @@ Map<String, dynamic>? extractJson(String text) {
 /// Sceglie il miglior modello Gemini "Flash" disponibile per la chiave.
 /// [models] è l'elenco restituito da GET /v1beta/models.
 String? pickBestModel(List<Map<String, dynamic>> models) {
+  final r = rankModels(models);
+  return r.isEmpty ? null : r.first;
+}
+
+/// Tutti i modelli Flash adatti, dal migliore al peggiore.
+List<String> rankModels(List<Map<String, dynamic>> models) {
   final candidates = <String>[];
   for (final m in models) {
     final name = (m['name'] ?? '').toString().replaceFirst('models/', '');
@@ -163,8 +169,7 @@ String? pickBestModel(List<Map<String, dynamic>> models) {
     if (bad.any(name.contains)) continue;
     candidates.add(name);
   }
-  if (candidates.isEmpty) return null;
-  if (candidates.contains('gemini-flash-latest')) return 'gemini-flash-latest';
+  if (candidates.isEmpty) return const [];
 
   int score(String n) {
     var s = 0;
@@ -173,10 +178,11 @@ String? pickBestModel(List<Map<String, dynamic>> models) {
     if (n.contains('lite')) s -= 30; // meno preciso
     if (n.contains('preview') || n.contains('exp')) s -= 20;
     if (RegExp(r'-\d{3}$').hasMatch(n)) s -= 1; // versioni fissate
+    if (n == 'gemini-flash-latest') s += 100000;
     if (n.contains('latest')) s += 5;
     return s;
   }
 
   candidates.sort((a, b) => score(b).compareTo(score(a)));
-  return candidates.first;
+  return candidates.toSet().toList();
 }

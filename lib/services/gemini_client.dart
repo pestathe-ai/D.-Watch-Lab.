@@ -9,7 +9,13 @@ import 'prompt.dart';
 
 class GeminiException implements Exception {
   final String message;
-  GeminiException(this.message);
+  final int? status;
+  GeminiException(this.message, [this.status]);
+
+  /// Errore temporaneo: server occupato o risposta lenta.
+  bool get transient =>
+      status == 500 || status == 502 || status == 503 || status == 504 ||
+      status == -1;
   @override
   String toString() => message;
 }
@@ -38,21 +44,26 @@ class GeminiClient {
       };
 
   /// Elenca i modelli disponibili per la chiave e sceglie il migliore.
-  Future<String> resolveModel() async {
+  Future<String> resolveModel() async => (await resolveModels()).first;
+
+  /// Tutti i modelli adatti per questa chiave, dal migliore.
+  Future<List<String>> resolveModels() async {
     final res = await _http
         .get(Uri.parse('$_base/models?pageSize=200'), headers: _headers)
         .timeout(const Duration(seconds: 20));
-    if (res.statusCode != 200) throw GeminiException(_explain(res));
+    if (res.statusCode != 200) {
+      throw GeminiException(_explain(res), res.statusCode);
+    }
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
     final list = (body['models'] as List? ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
-    final best = pickBestModel(list);
-    if (best == null) {
+    final ranked = rankModels(list);
+    if (ranked.isEmpty) {
       throw GeminiException(
           'Nessun modello Gemini adatto trovato per questa chiave.');
     }
-    return best;
+    return ranked;
   }
 
   Future<WatchAppraisal> appraise({
@@ -117,7 +128,7 @@ class GeminiClient {
               headers: _headers, body: jsonEncode(body))
           .timeout(const Duration(seconds: 120));
     } on TimeoutException {
-      throw GeminiException('Il server non ha risposto in tempo. Riprova.');
+      throw GeminiException('Il server non ha risposto in tempo. Riprova.', -1);
     }
 
     if (res.statusCode != 200) {
@@ -126,16 +137,16 @@ class GeminiClient {
       // Sul piano gratuito la ricerca Google non è inclusa: Google risponde
       // 429 (quota zero) o 400. In entrambi i casi riprovo senza ricerca.
       if (webSearch && res.statusCode == 429) {
-        throw GeminiException('[tool] $msg');
+        throw GeminiException('[tool] $msg', 429);
       }
       if (webSearch &&
           res.statusCode == 400 &&
           (lower.contains('tool') ||
               lower.contains('search') ||
               lower.contains('grounding'))) {
-        throw GeminiException('[tool] $msg');
+        throw GeminiException('[tool] $msg', 400);
       }
-      throw GeminiException(msg);
+      throw GeminiException(msg, res.statusCode);
     }
 
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
@@ -165,8 +176,11 @@ class GeminiClient {
             '(o fino a domani se è il limite giornaliero) e riprova.'
             '${detail.isEmpty ? '' : '\n\nDettaglio Google: ${detail.split('\n').first}'}';
       case 500:
+      case 502:
       case 503:
-        return 'Il servizio Google è sovraccarico. Riprova tra poco.';
+      case 504:
+        return 'I server di Google sono molto occupati in questo momento. '
+            'Ho già riprovato con altri modelli: riprova tra un minuto.';
       default:
         return 'Errore ${res.statusCode}: $detail';
     }

@@ -6,8 +6,9 @@ import 'storage.dart';
 
 class MissingKeyException implements Exception {}
 
-/// Esegue una valutazione completa: legge impostazioni, sceglie il modello,
-/// invia le foto e restituisce il risultato.
+/// Esegue una valutazione completa con tentativi automatici:
+/// se un modello è occupato o al limite, riprova e poi passa al successivo.
+/// [onStatus] riceve messaggi brevi da mostrare all'utente.
 Future<WatchAppraisal> runAppraisal({
   required Storage storage,
   required List<File> photos,
@@ -15,17 +16,14 @@ Future<WatchAppraisal> runAppraisal({
   String extraInfo = '',
   bool box = false,
   bool papers = false,
+  void Function(String)? onStatus,
+  GeminiClient? clientOverride,
+  Duration Function(int attempt)? backoff,
 }) async {
   final settings = await storage.loadSettings();
   if (settings.apiKey.trim().isEmpty) throw MissingKeyException();
-  final client = GeminiClient(settings.apiKey.trim());
-
-  var model = settings.model.trim();
-  if (model.isEmpty) {
-    model = await client.resolveModel();
-    await storage.saveSettings(Settings(
-        apiKey: settings.apiKey, model: model, webSearch: settings.webSearch));
-  }
+  final client = clientOverride ?? GeminiClient(settings.apiKey.trim());
+  final wait = backoff ?? (a) => Duration(seconds: 2 * a);
 
   final inputs = <PhotoInput>[];
   for (var i = 0; i < photos.length; i++) {
@@ -41,44 +39,81 @@ Future<WatchAppraisal> runAppraisal({
     inputs.add(PhotoInput(labels[i], bytes, mimeType: mime));
   }
 
-  Future<void> rememberNoSearch() async {
-    if (client.searchUnavailable && settings.webSearch) {
-      final now = await storage.loadSettings();
-      await storage.saveSettings(Settings(
-          apiKey: now.apiKey, model: now.model, webSearch: false));
-    }
-  }
-
-  try {
-    final r = await client.appraise(
+  return appraiseWithFallback(
+    client: client,
+    savedModel: settings.model.trim(),
+    run: (model) => client.appraise(
       model: model,
       photos: inputs,
       extraInfo: extraInfo,
       box: box,
       papers: papers,
       webSearch: settings.webSearch,
-    );
-    await rememberNoSearch();
-    return r;
-  } on GeminiException catch (e) {
-    // Modello sparito (Google li ritira): ne cerco uno nuovo e riprovo.
-    if (e.message.startsWith('Modello non trovato')) {
-      final fresh = await client.resolveModel();
+    ),
+    onStatus: onStatus,
+    wait: wait,
+    onModelWorked: (model) async {
+      final now = await storage.loadSettings();
       await storage.saveSettings(Settings(
-          apiKey: settings.apiKey,
-          model: fresh,
-          webSearch: settings.webSearch));
-      final r = await client.appraise(
-        model: fresh,
-        photos: inputs,
-        extraInfo: extraInfo,
-        box: box,
-        papers: papers,
-        webSearch: settings.webSearch,
-      );
-      await rememberNoSearch();
-      return r;
+        apiKey: now.apiKey,
+        model: model,
+        webSearch: client.searchUnavailable ? false : now.webSearch,
+      ));
+    },
+  );
+}
+
+/// Logica dei tentativi, separata per poterla testare.
+Future<T> appraiseWithFallback<T>({
+  required GeminiClient client,
+  required String savedModel,
+  required Future<T> Function(String model) run,
+  required Future<void> Function(String model) onModelWorked,
+  required Duration Function(int attempt) wait,
+  void Function(String)? onStatus,
+  int maxModels = 3,
+  int triesPerModel = 2,
+}) async {
+  final tried = <String>{};
+  List<String>? ranked;
+  GeminiException? last;
+
+  Future<String?> nextModel() async {
+    if (tried.isEmpty && savedModel.isNotEmpty) return savedModel;
+    ranked ??= await client.resolveModels();
+    for (final m in ranked!) {
+      if (!tried.contains(m)) return m;
     }
-    rethrow;
+    return null;
   }
+
+  while (tried.length < maxModels) {
+    final model = await nextModel();
+    if (model == null) break;
+    tried.add(model);
+    if (tried.length > 1) onStatus?.call('Provo un altro modello IA…');
+
+    for (var attempt = 1; attempt <= triesPerModel; attempt++) {
+      try {
+        final r = await run(model);
+        await onModelWorked(model);
+        return r;
+      } on GeminiException catch (e) {
+        last = e;
+        if (e.transient && attempt < triesPerModel) {
+          onStatus?.call('Google è occupato, riprovo…');
+          await Future<void>.delayed(wait(attempt));
+          continue;
+        }
+        break;
+      }
+    }
+
+    final e = last!;
+    // Errori che un altro modello può risolvere: occupato, limite, sparito.
+    final switchable = e.transient || e.status == 429 || e.status == 404;
+    if (!switchable) throw e;
+  }
+  throw last ??
+      GeminiException('Nessun modello Gemini adatto trovato per questa chiave.');
 }

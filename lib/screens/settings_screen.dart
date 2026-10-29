@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../services/gemini_client.dart';
 import '../services/storage.dart';
+import '../widgets/key_setup.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Storage storage;
-  const SettingsScreen({super.key, required this.storage});
+  final ValueChanged<bool>? onKeyChanged;
+  const SettingsScreen({super.key, required this.storage, this.onKeyChanged});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -39,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _save({bool quiet = false}) async {
     await widget.storage.saveSettings(Settings(
         apiKey: keyCtrl.text, model: modelCtrl.text, webSearch: webSearch));
+    widget.onKeyChanged?.call(keyCtrl.text.trim().isNotEmpty);
     if (!quiet && mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Impostazioni salvate')));
@@ -90,26 +93,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: () {
-                      Clipboard.setData(const ClipboardData(
-                          text: 'https://aistudio.google.com/apikey'));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  'Link copiato: incollalo nel browser')));
-                    },
-                    icon: const Icon(Icons.link),
-                    label: const Text('Copia link'),
+                    onPressed: () => openKeyPage(context),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Apri Google AI Studio'),
                   ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: keyCtrl,
+                    onChanged: (_) => setState(() {}),
                     obscureText: obscure,
                     autocorrect: false,
                     enableSuggestions: false,
                     decoration: InputDecoration(
                       hintText: 'Incolla la chiave API',
-                      suffixIcon: IconButton(
+                      suffixIcon: keyCtrl.text.isEmpty
+                          ? IconButton(
+                              tooltip: 'Incolla',
+                              icon: const Icon(Icons.content_paste),
+                              onPressed: () async {
+                                final d = await Clipboard.getData(
+                                    Clipboard.kTextPlain);
+                                setState(() =>
+                                    keyCtrl.text = (d?.text ?? '').trim());
+                              },
+                            )
+                          : IconButton(
                         icon: Icon(
                             obscure ? Icons.visibility : Icons.visibility_off),
                         onPressed: () => setState(() => obscure = !obscure),

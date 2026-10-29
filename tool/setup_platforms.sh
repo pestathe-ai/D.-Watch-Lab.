@@ -12,6 +12,15 @@ sed -i 's/android:label="[^"]*"/android:label="D. Watch Lab"/' "$MANIFEST"
 grep -q 'android.permission.INTERNET' "$MANIFEST" || \
   sed -i 's#<manifest xmlns:android="http://schemas.android.com/apk/res/android">#<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>#' "$MANIFEST"
 
+# Apertura link nel browser (Android 11+)
+if ! grep -q 'android:scheme="https"' "$MANIFEST"; then
+  if grep -q '<queries>' "$MANIFEST"; then
+    sed -i 's#<queries>#<queries>\n        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="https" />\n        </intent>#' "$MANIFEST"
+  else
+    sed -i 's#</manifest>#    <queries>\n        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="https" />\n        </intent>\n    </queries>\n</manifest>#' "$MANIFEST"
+  fi
+fi
+
 # minSdk 24 (richiesto dai plugin)
 for f in android/app/build.gradle.kts android/app/build.gradle; do
   [ -f "$f" ] && sed -i -E 's/minSdk(Version)? *=? *flutter\.minSdkVersion/minSdk = 24/' "$f" || true
@@ -25,5 +34,5 @@ if [ "$(uname)" = "Darwin" ]; then
 fi
 
 flutter pub get
-echo "--- manifest ---"; cat "$MANIFEST" | head -12
+echo "--- manifest ---"; cat "$MANIFEST"
 grep -n "minSdk" android/app/build.gradle* || true

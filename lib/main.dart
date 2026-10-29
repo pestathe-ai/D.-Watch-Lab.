@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'screens/capture_screen.dart';
 import 'screens/collection_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/storage.dart';
 
@@ -53,6 +53,14 @@ ThemeData buildTheme() {
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      showCloseIcon: true,
+    ),
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: ZoomPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerLow,
@@ -87,24 +95,41 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final storage = Storage();
+  final hasKey = ValueNotifier<bool>(true);
   int index = 0;
   int collectionVersion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    storage.loadSettings().then((s) {
+      if (mounted) hasKey.value = s.apiKey.trim().isNotEmpty;
+    });
+  }
 
   void _onSaved() => setState(() => collectionVersion++);
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      CaptureScreen(
+      HomeScreen(
         storage: storage,
+        hasKey: hasKey,
         onSaved: _onSaved,
-        openSettings: () => setState(() => index = 2),
+        collectionVersion: collectionVersion,
       ),
       CollectionScreen(
           key: ValueKey(collectionVersion),
           storage: storage,
           onChanged: _onSaved),
-      SettingsScreen(storage: storage),
+      ValueListenableBuilder<bool>(
+        valueListenable: hasKey,
+        builder: (_, k, __) => SettingsScreen(
+          key: ValueKey(k),
+          storage: storage,
+          onKeyChanged: (v) => hasKey.value = v,
+        ),
+      ),
     ];
     return Scaffold(
       body: IndexedStack(index: index, children: pages),

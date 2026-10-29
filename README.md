@@ -4,6 +4,16 @@ App Android che stima il valore di un orologio dalle foto, usando l'IA
 Google Gemini (piano gratuito). Ispirata al Watch Scanner di Chrono24, con in più
 foto multiple, modelli alternativi e segnali di possibile falso.
 
+## Novità v0.2
+- Un tocco per valutare: fotografi il quadrante e l'analisi parte subito.
+- Attivazione della chiave gratuita direttamente dalla schermata principale
+  (apre Google AI Studio e incolla la chiave dagli appunti).
+- Schermata di analisi animata con errori chiari e tasto "Riprova".
+- Se Google è occupato l'app riprova da sola e cambia modello.
+- "Migliora la stima" nel risultato: aggiungi foto, scatola, documenti e
+  rivaluta.
+- Ultime valutazioni in home, animazioni più fluide.
+
 ## Funzioni (v0.1)
 - **Foto guidate**: quadrante (obbligatoria), fondello, lato e corona, fibbia,
   anse, scatola/garanzia. Più foto = stima più precisa.

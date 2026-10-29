@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:d_watch_lab/models/appraisal.dart';
 import 'package:d_watch_lab/screens/collection_screen.dart';
+import 'package:d_watch_lab/services/appraisal_runner.dart';
 import 'package:d_watch_lab/services/gemini_client.dart';
 import 'package:d_watch_lab/services/prompt.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -259,6 +260,89 @@ void main() {
           }, 200));
       expect(await GeminiClient('K', client: client).resolveModel(),
           'gemini-3.6-flash');
+    });
+  });
+
+  group('tentativi e cambio modello', () {
+    GeminiClient lister(List<String> names) => GeminiClient('K',
+        client: MockClient((req) async => jsonRes({
+              'models': [
+                for (final n in names)
+                  {
+                    'name': 'models/$n',
+                    'supportedGenerationMethods': ['generateContent']
+                  }
+              ]
+            }, 200)));
+
+    test('503 ripetuto: riprova e poi passa al modello successivo', () async {
+      final calls = <String>[];
+      final statuses = <String>[];
+      String? worked;
+      final r = await appraiseWithFallback<String>(
+        client: lister(['gemini-3.8-flash', 'gemini-3.6-flash']),
+        savedModel: 'gemini-3.8-flash',
+        run: (m) async {
+          calls.add(m);
+          if (m == 'gemini-3.8-flash') throw GeminiException('busy', 503);
+          return 'ok:$m';
+        },
+        onModelWorked: (m) async => worked = m,
+        wait: (_) => Duration.zero,
+        onStatus: statuses.add,
+      );
+      expect(r, 'ok:gemini-3.6-flash');
+      expect(calls, ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.6-flash']);
+      expect(worked, 'gemini-3.6-flash');
+      expect(statuses, contains('Provo un altro modello IA…'));
+    });
+
+    test('chiave non valida: nessun cambio modello', () async {
+      var n = 0;
+      await expectLater(
+        appraiseWithFallback<String>(
+          client: lister(['a-flash']),
+          savedModel: 'gemini-x-flash',
+          run: (m) async {
+            n++;
+            throw GeminiException('Chiave API non valida', 400);
+          },
+          onModelWorked: (_) async {},
+          wait: (_) => Duration.zero,
+        ),
+        throwsA(isA<GeminiException>()),
+      );
+      expect(n, 1);
+    });
+
+    test('nessun modello salvato: usa il migliore della lista', () async {
+      final r = await appraiseWithFallback<String>(
+        client: lister(['gemini-2.5-flash', 'gemini-3.6-flash']),
+        savedModel: '',
+        run: (m) async => m,
+        onModelWorked: (_) async {},
+        wait: (_) => Duration.zero,
+      );
+      expect(r, 'gemini-3.6-flash');
+    });
+
+    test('tutti occupati: errore chiaro dopo massimo 3 modelli', () async {
+      final calls = <String>[];
+      await expectLater(
+        appraiseWithFallback<String>(
+          client: lister(['gemini-3.8-flash', 'gemini-3.6-flash',
+              'gemini-3.5-flash-lite', 'gemini-2.5-flash']),
+          savedModel: '',
+          run: (m) async {
+            calls.add(m);
+            throw GeminiException('busy', 503);
+          },
+          onModelWorked: (_) async {},
+          wait: (_) => Duration.zero,
+        ),
+        throwsA(isA<GeminiException>()),
+      );
+      expect(calls.toSet().length, 3);
     });
   });
 }
