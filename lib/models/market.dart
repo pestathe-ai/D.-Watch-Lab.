@@ -152,13 +152,50 @@ bool isExcluded(String title) {
   return _excludeWords.any((w) => t.contains(' ${normalize(w)} '));
 }
 
+/// Indicazioni dell'IA per cercare e filtrare gli annunci giusti.
+class MarketHints {
+  /// Ricerca come la scriverebbe un venditore.
+  final String query;
+
+  /// Almeno una di queste parole deve comparire nel titolo (es. "vintage",
+  /// "anni 40"); usate quando il modello non ha un nome preciso.
+  final List<String> must;
+
+  /// Annunci da scartare (es. collezioni moderne della stessa marca).
+  final List<String> exclude;
+
+  /// Stima grezza dell'IA: serve a scartare prezzi di un'altra fascia.
+  final double? low;
+  final double? high;
+
+  const MarketHints({
+    this.query = '',
+    this.must = const [],
+    this.exclude = const [],
+    this.low,
+    this.high,
+  });
+
+  String get cacheKey => normalize(
+      '$query | ${must.join(',')} | ${exclude.join(',')}');
+}
+
+bool _hasWord(String normalizedTitle, String word) {
+  final w = normalize(word);
+  if (w.isEmpty) return false;
+  return ' $normalizedTitle '.contains(' $w ') ||
+      (w.length >= 5 && normalizedTitle.contains(w));
+}
+
 /// Tiene solo gli annunci che parlano davvero di quell'orologio.
 List<Listing> matchListings(
   List<Listing> all, {
   required String brand,
   required String model,
   String? reference,
+  MarketHints? hints,
 }) {
+  final h = hints ?? const MarketHints();
   final b = normalize(brand);
   final brandTokens = b.split(' ').where((t) => t.length >= 3).toList();
   var pool = all.where((l) {
@@ -166,6 +203,10 @@ List<Listing> matchListings(
     if (isExcluded(l.title)) return false;
     final t = normalize(l.title);
     if (brandTokens.isNotEmpty && !brandTokens.any(t.contains)) return false;
+    if (h.exclude.any((w) => _hasWord(t, w))) return false;
+    // Fascia di prezzo plausibile (larga) secondo la stima dell'IA.
+    if (h.low != null && h.low! > 0 && l.price < h.low! / 2.5) return false;
+    if (h.high != null && h.high! > 0 && l.price > h.high! * 2.5) return false;
     return true;
   }).toList();
 
@@ -179,7 +220,14 @@ List<Listing> matchListings(
 
   // 2) Altrimenti le parole chiave del modello (almeno 2/3).
   final tokens = keyTokens(model);
-  if (tokens.isEmpty) return pool;
+  if (tokens.isEmpty) {
+    // Modello senza nome (es. vintage generico): servono le parole indicate
+    // dall'IA, altrimenti si finirebbe a fare la media di tutta la marca.
+    if (h.must.isEmpty) return const [];
+    return pool
+        .where((l) => h.must.any((w) => _hasWord(normalize(l.title), w)))
+        .toList();
+  }
   final need = (tokens.length * 2 / 3).ceil().clamp(1, tokens.length);
   return pool.where((l) {
     final t = normalize(l.title);
@@ -237,9 +285,10 @@ MarketPrice? computeMarketPrice(
   String? reference,
   required String query,
   DateTime? now,
+  MarketHints? hints,
 }) {
   final matched = matchListings(all,
-      brand: brand, model: model, reference: reference);
+      brand: brand, model: model, reference: reference, hints: hints);
   final clean = removeOutliers(matched);
   if (clean.isEmpty) return null;
 

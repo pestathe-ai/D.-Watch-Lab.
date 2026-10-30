@@ -168,11 +168,11 @@ void main() {
     final a = WatchAppraisal.fromJson({
       'brand': 'Citizen',
       'model': 'Duke',
-      'price_low': 20,
-      'price_high': 40,
-      'price_likely': 30,
+      'price_low': 80,
+      'price_high': 130,
+      'price_likely': 100,
     });
-    expect(a.displayLikely, 30);
+    expect(a.displayLikely, 100);
     final mp = computeMarketPrice([
       for (final p in <double>[90, 100, 110, 120, 130]) l('Citizen Duke', p)
     ], brand: 'Citizen', model: 'Duke', query: 'q');
@@ -182,5 +182,91 @@ void main() {
         jsonDecode(jsonEncode(b.toJson())) as Map<String, dynamic>);
     expect(c.market!.count, 5);
     expect(c.displayLikely, 110);
+  });
+
+  group('vintage senza nome di modello (es. Jaeger-LeCoultre anni 40)', () {
+    final all = [
+      l('Jaeger LeCoultre Reverso Classic Large', 5200),
+      l('Jaeger-LeCoultre Master Ultra Thin Moon', 6400),
+      l('Jaeger LeCoultre Polaris Date', 7100),
+      l('Jaeger LeCoultre vintage anni 40 acciaio carica manuale', 1350),
+      l('JAEGER LECOULTRE 1940s steel manual wind arabic', 1500),
+      l('Vintage Jaeger LeCoultre cal. 450 orologio uomo', 1100),
+      l('Jaeger LeCoultre vintage 1945 militare', 1800),
+      l('Seiko vintage anni 40', 300),
+    ];
+    const hints = MarketHints(
+      query: 'Jaeger LeCoultre vintage anni 40 carica manuale',
+      must: ['vintage', 'anni 40', '1940', '194'],
+      exclude: ['Reverso', 'Master', 'Polaris'],
+      low: 900,
+      high: 2000,
+    );
+
+    test('senza indicazioni non fa la media di tutta la marca', () {
+      expect(matchListings(all, brand: 'Jaeger-LeCoultre', model: ''),
+          isEmpty);
+    });
+
+    test('con le indicazioni tiene solo i vintage giusti', () {
+      final m = matchListings(all,
+          brand: 'Jaeger-LeCoultre', model: '', hints: hints);
+      expect(m.map((e) => e.price).toList()..sort(), [1100, 1350, 1500, 1800]);
+      final mp = computeMarketPrice(all,
+          brand: 'Jaeger-LeCoultre', model: '', query: 'q', hints: hints)!;
+      expect(mp.likely, inInclusiveRange(1300, 1550));
+    });
+
+    test('la fascia di prezzo scarta i modelli moderni anche senza esclusioni',
+        () {
+      final m = matchListings(all,
+          brand: 'Jaeger-LeCoultre',
+          model: '',
+          hints: const MarketHints(must: ['vintage', '1940', '194'], low: 900, high: 2000));
+      expect(m.every((e) => e.price < 2000 * 2.5), isTrue);
+      expect(m.any((e) => e.title.contains('Polaris')), isFalse);
+    });
+
+    test('prezzo eBay troppo lontano dalla stima IA: non mi fido', () {
+      final a = WatchAppraisal.fromJson({
+        'brand': 'Jaeger-LeCoultre',
+        'model': '',
+        'price_low': 1000,
+        'price_high': 1800,
+        'price_likely': 1400,
+      });
+      final wrong = computeMarketPrice([
+        for (final p in <double>[4200, 4500, 4600, 4800, 5000])
+          l('Jaeger LeCoultre vintage', p)
+      ], brand: 'Jaeger-LeCoultre', model: 'x', query: 'q');
+      // model 'x' non ha parole chiave valide: uso 'vintage' tramite modello
+      final b = a.withMarket(wrong ??
+          computeMarketPrice([
+            for (final p in <double>[4200, 4500, 4600, 4800, 5000])
+              l('Jaeger LeCoultre vintage', p)
+          ],
+              brand: 'Jaeger-LeCoultre',
+              model: '',
+              query: 'q',
+              hints: const MarketHints(must: ['vintage'])));
+      expect(b.market, isNotNull);
+      expect(b.marketMismatch, isTrue);
+      expect(b.hasMarket, isFalse);
+      expect(b.displayLikely, 1400);
+    });
+
+    test('le indicazioni sopravvivono al salvataggio', () {
+      final a = WatchAppraisal.fromJson({
+        'brand': 'JLC',
+        'search_query': 'q',
+        'must_words': ['vintage'],
+        'exclude_words': ['Reverso'],
+      });
+      final b = WatchAppraisal.fromJson(
+          jsonDecode(jsonEncode(a.toJson())) as Map<String, dynamic>);
+      expect(b.hints.must, ['vintage']);
+      expect(b.hints.exclude, ['Reverso']);
+      expect(b.searchQuery, 'q');
+    });
   });
 }

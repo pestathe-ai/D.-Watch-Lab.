@@ -34,7 +34,7 @@ void main() {
     final p = buildIdentifyPrompt(extraInfo: 'anno 1985');
     expect(p, contains('"brand"'));
     expect(p, contains('anno 1985'));
-    expect(p.length, lessThan(900));
+    expect(p.length, lessThan(2200));
   });
 
   test('identify: JSON forzato, max 2 foto, legge marca e modello', () async {

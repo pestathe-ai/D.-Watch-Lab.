@@ -229,21 +229,29 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
   onStatus?.call('Leggo gli annunci reali su eBay…');
   try {
     final key = normalize(
-        marketQuery(brand: a.brand, model: a.model, reference: a.reference));
+        '${marketQuery(brand: a.brand, model: a.model, reference: a.reference)} '
+        '${a.hints.cacheKey}');
     var m = await storage.cachedMarket(key);
     if (m == null) {
       m = await lookupMarket(EbayClient(keys.id, keys.secret),
-          brand: a.brand, model: a.model, reference: a.reference);
+          brand: a.brand,
+          model: a.model,
+          reference: a.reference,
+          hints: a.hints);
       if (m != null) await storage.cacheMarket(key, m);
     }
     if (m == null) {
       return (a.withMarket(null), 'Nessun annuncio eBay trovato per questo '
           'modello: mostro la stima dell\'IA.');
     }
-    final warn = m.reliable
-        ? null
-        : 'Solo ${m.count} annunci eBay trovati: mostro la stima dell\'IA.';
-    return (a.withMarket(m), warn);
+    final withM = a.withMarket(m);
+    final warn = withM.marketMismatch
+        ? 'Gli annunci eBay trovati sembrano di modelli diversi: mostro la '
+            'stima dell\'IA.'
+        : m.reliable
+            ? null
+            : 'Solo ${m.count} annunci eBay trovati: mostro la stima dell\'IA.';
+    return (withM, warn);
   } catch (e) {
     return (a, 'eBay non disponibile ($e). Mostro la stima dell\'IA.');
   }

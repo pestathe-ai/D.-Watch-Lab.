@@ -1,7 +1,7 @@
 name: d_watch_lab
 description: "D. Watch Lab - valuta orologi da foto con l'IA."
 publish_to: 'none'
-version: 0.5.3+12
+version: 0.6.0+13
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

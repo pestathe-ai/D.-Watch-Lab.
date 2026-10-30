@@ -76,6 +76,11 @@ class WatchAppraisal {
   /// Prezzo calcolato dagli annunci reali (se disponibile).
   final MarketPrice? market;
 
+  /// Indicazioni dell'IA per la ricerca degli annunci.
+  final String searchQuery;
+  final List<String> mustWords;
+  final List<String> excludeWords;
+
   const WatchAppraisal({
     required this.isWatch,
     required this.brand,
@@ -100,9 +105,30 @@ class WatchAppraisal {
     this.sources = const [],
     this.alternatives = const [],
     this.market,
+    this.searchQuery = '',
+    this.mustWords = const [],
+    this.excludeWords = const [],
   });
 
-  bool get hasMarket => market != null && market!.reliable;
+  MarketHints get hints => MarketHints(
+        query: searchQuery,
+        must: mustWords,
+        exclude: excludeWords,
+        low: priceLow,
+        high: priceHigh,
+      );
+
+  /// Il prezzo degli annunci è troppo lontano dalla stima dell'IA: probabile
+  /// che eBay abbia restituito modelli diversi.
+  bool get marketMismatch {
+    final m = market;
+    final ai = priceLikely;
+    if (m == null || ai == null || ai <= 0) return false;
+    final r = m.likely / ai;
+    return r > 2.2 || r < 0.45;
+  }
+
+  bool get hasMarket => market != null && market!.reliable && !marketMismatch;
 
   /// Prezzi da mostrare: quelli di mercato se affidabili, altrimenti la
   /// stima dell'IA.
@@ -166,6 +192,9 @@ class WatchAppraisal {
               .where((a) => a.name.isNotEmpty)
               .toList()
           : const [],
+      searchQuery: _str(j['search_query']) ?? '',
+      mustWords: _strList(j['must_words']),
+      excludeWords: _strList(j['exclude_words']),
       market: (j['market'] is Map)
           ? MarketPrice.fromJson(Map<String, dynamic>.from(j['market'] as Map))
           : null,
@@ -196,6 +225,9 @@ class WatchAppraisal {
         'sources': sources,
         'alternatives': alternatives.map((a) => a.toJson()).toList(),
         'market': market?.toJson(),
+        'search_query': searchQuery,
+        'must_words': mustWords,
+        'exclude_words': excludeWords,
       };
 
   /// Testo pronto per un annuncio di vendita (stile Chrono24/Subito).

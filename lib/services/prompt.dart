@@ -66,6 +66,9 @@ Metodo:
 7. Se mancano angolazioni utili, indica quali foto aggiungere.
 8. Sii onesto: se la foto è scarsa o il modello è incerto, abbassa la
    confidenza e allarga la forbice. Non inventare referenze.
+Attenzione ai vintage senza nome di modello: il valore dipende da epoca,
+calibro, materiale e condizioni del quadrante, non dai modelli moderni della
+stessa marca. Un quadrante rovinato o restaurato abbassa molto il prezzo.
 Se la foto non mostra un orologio, metti is_watch a false.
 
 Rispondi SOLO con un oggetto JSON valido, testi in italiano, numeri senza
@@ -91,7 +94,10 @@ simboli, prezzi in EUR, con questi campi:
   "comparables": ["esempi di prezzi reali trovati, con fonte"],
   "red_flags": [{"severity": "alta|media|bassa", "description": ""}],
   "authenticity_note": "giudizio prudente, 1-2 frasi",
-  "more_photos": ["foto da aggiungere per migliorare la stima"]
+  "more_photos": ["foto da aggiungere per migliorare la stima"],
+  "search_query": "come un venditore titolerebbe l'annuncio su eBay",
+  "must_words": ["parole tipiche dei titoli di annunci dello stesso tipo"],
+  "exclude_words": ["modelli della stessa marca da non confondere"]
 }
 confidence = quanto sei sicuro dell'identificazione (0-100).
 '''
@@ -193,17 +199,32 @@ List<String> rankModels(List<Map<String, dynamic>> models) {
 String buildIdentifyPrompt({String extraInfo = ''}) {
   final extra = extraInfo.trim().isEmpty ? '' : '\nInfo del proprietario: ${extraInfo.trim()}';
   return '''
-Sei un esperto di orologi. Identifica l'orologio nella foto leggendo con cura
-le scritte sul quadrante (marca, nome del modello) ed eventuali incisioni.$extra
+Sei un esperto di orologi e del mercato dell'usato. Identifica l'orologio nella
+foto leggendo con cura le scritte (marca, modello) e osservando stile, epoca,
+cassa, quadrante e lancette.$extra
 Rispondi SOLO con JSON, senza altro testo:
-{"is_watch": true, "brand": "", "model": "", "reference": "o null", "confidence": 0}
-model = nome commerciale del modello (es. "Submariner Date", "Tank Must",
-"Eco-Drive"), senza ripetere la marca. reference = codice referenza solo se
-leggibile o certo, altrimenti null. confidence 0-100. Se non è un orologio,
-is_watch false.
-'''
+$_identifyFields'''
       .trim();
 }
+
+const _identifyFields = '''
+{"is_watch": true, "brand": "", "model": "", "reference": null,
+ "era": "", "confidence": 0,
+ "search_query": "", "must_words": [], "exclude_words": [],
+ "price_low": 0, "price_high": 0}
+- model: nome commerciale (es. "Submariner Date", "Tank Must"), senza la
+  marca. Se è un vintage senza nome di modello lascia "".
+- reference: codice solo se leggibile o certo, altrimenti null.
+- era: anno o decennio stimato (es. "anni 40").
+- search_query: come un venditore titolerebbe l'annuncio su eBay per QUESTO
+  tipo di orologio (es. "Jaeger LeCoultre vintage anni 40 carica manuale").
+- must_words: 2-5 parole di cui almeno una compare nel titolo di un annuncio
+  dello stesso tipo (per un vintage: "vintage", "anni 40", "1940", "194").
+- exclude_words: modelli/collezioni della stessa marca molto diversi per
+  epoca o fascia di prezzo da escludere (es. "Reverso", "Master", "Polaris").
+- price_low/price_high: forbice grezza in EUR del valore come usato in
+  queste condizioni (serve a scartare annunci fuori fascia).
+Se non è un orologio, is_watch false.''';
 
 /// Il modello più rapido disponibile (Flash-Lite più recente, altrimenti il
 /// primo della classifica).

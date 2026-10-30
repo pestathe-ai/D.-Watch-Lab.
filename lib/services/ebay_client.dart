@@ -145,6 +145,7 @@ Future<MarketPrice?> lookupMarket(
   required String brand,
   required String model,
   String? reference,
+  MarketHints? hints,
 }) async {
   if (brand.trim().isEmpty && model.trim().isEmpty) return null;
   final seen = <String>{};
@@ -162,7 +163,12 @@ Future<MarketPrice?> lookupMarket(
   final hasRef = reference != null && reference.trim().isNotEmpty;
   final broad = marketQuery(
       brand: brand, model: model, reference: reference, withReference: false);
-  final queries = {precise, if (hasRef) broad};
+  final aiQuery = hints?.query.trim() ?? '';
+  final queries = {
+    precise,
+    if (hasRef) broad,
+    if (aiQuery.isNotEmpty) aiQuery,
+  };
   final results = await Future.wait([
     for (final q in queries) ...[
       ebay.search(q, marketplace: 'EBAY_IT'),
@@ -173,6 +179,10 @@ Future<MarketPrice?> lookupMarket(
     addAll(r);
   }
   final price = computeMarketPrice(all,
-      brand: brand, model: model, reference: reference, query: precise);
+      brand: brand,
+      model: model,
+      reference: reference,
+      query: aiQuery.isNotEmpty && keyTokens(model).isEmpty ? aiQuery : precise,
+      hints: hints);
   return price;
 }
