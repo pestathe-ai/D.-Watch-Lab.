@@ -55,7 +55,7 @@ class GeminiClient {
   Future<List<String>> resolveModels() async {
     final res = await guardNetwork(() => _http
         .get(Uri.parse('$_base/models?pageSize=200'), headers: _headers)
-        .timeout(const Duration(seconds: 12)));
+        .timeout(const Duration(seconds: 20)));
     if (res.statusCode != 200) {
       throw GeminiException(_explain(res), res.statusCode);
     }
@@ -130,7 +130,7 @@ class GeminiClient {
     final res = await guardNetwork(() => _http
         .post(Uri.parse('$_base/models/$model:generateContent'),
             headers: _headers, body: jsonEncode(body))
-        .timeout(const Duration(seconds: 35)));
+        .timeout(const Duration(seconds: 100)));
 
     if (res.statusCode != 200) {
       final msg = _explain(res);
@@ -200,7 +200,7 @@ Future<http.Response> guardNetwork(Future<http.Response> Function() call) async 
   } on TimeoutException {
     throw GeminiException(
         'Google non ha risposto in tempo. Controlla la connessione e riprova.',
-        -1);
+        -2);
   } on SocketException {
     throw GeminiException(
         'Connessione interrotta. Controlla internet e riprova.', -1);

@@ -57,7 +57,7 @@ class EbayClient {
             },
             body: 'grant_type=client_credentials&scope='
                 '${Uri.encodeComponent('https://api.ebay.com/oauth/api_scope')}')
-        .timeout(const Duration(seconds: 8));
+        .timeout(const Duration(seconds: 12));
     if (res.statusCode != 200) {
       throw EbayException(res.statusCode == 401 || res.statusCode == 400
           ? 'Codici eBay non validi. Controlla Client ID e Client Secret '
@@ -93,7 +93,7 @@ class EbayClient {
       'Authorization': 'Bearer $token',
       'X-EBAY-C-MARKETPLACE-ID': marketplace,
       'Accept-Language': 'it-IT',
-    }).timeout(const Duration(seconds: 8));
+    }).timeout(const Duration(seconds: 12));
     if (res.statusCode == 401) {
       resetToken();
       throw EbayException('Accesso eBay scaduto, riprova.');

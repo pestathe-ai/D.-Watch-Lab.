@@ -119,11 +119,11 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
         box: widget.box,
         papers: widget.papers,
         onStatus: status,
-      ).timeout(const Duration(seconds: 70),
+      ).timeout(const Duration(seconds: 180),
           onTimeout: () => throw GeminiException(
-              'Google non ha risposto entro un minuto. Di solito è la '
+              'Google non ha risposto entro 3 minuti. Di solito è la '
               'connessione o un momento di traffico: riprova.',
-              -1));
+              -2));
       if (!mounted || myRun != run) return;
       final (r, warn) =
           await addMarketPrice(widget.storage, ai, onStatus: status);
@@ -261,7 +261,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
             ),
           ),
           const SizedBox(height: 10),
-          Text('$seconds s · di solito 10–30 secondi',
+          Text('$seconds s · di solito 15–60 secondi',
               style: t.textTheme.bodySmall
                   ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
         ],

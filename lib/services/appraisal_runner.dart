@@ -134,7 +134,7 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
   try {
     final m = await lookupMarket(EbayClient(keys.id, keys.secret),
             brand: a.brand, model: a.model, reference: a.reference)
-        .timeout(const Duration(seconds: 15));
+        .timeout(const Duration(seconds: 25));
     if (m == null) {
       return (a.withMarket(null), 'Nessun annuncio eBay trovato per questo '
           'modello: mostro la stima dell\'IA.');
