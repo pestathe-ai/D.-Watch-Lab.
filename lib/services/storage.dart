@@ -33,6 +33,19 @@ class Storage {
     await _prefs.setBool(_kWeb, s.webSearch);
   }
 
+  static const _kEbayId = 'ebay_client_id';
+  static const _kEbaySecret = 'ebay_client_secret';
+
+  Future<({String id, String secret})> loadEbay() async => (
+        id: await _prefs.getString(_kEbayId) ?? '',
+        secret: await _prefs.getString(_kEbaySecret) ?? '',
+      );
+
+  Future<void> saveEbay(String id, String secret) async {
+    await _prefs.setString(_kEbayId, id.trim());
+    await _prefs.setString(_kEbaySecret, secret.trim());
+  }
+
   Future<List<SavedValuation>> loadCollection() async {
     final list =
         SavedValuation.listFromJson(await _prefs.getString(_kCollection));

@@ -40,8 +40,10 @@ String buildPrompt({
 
   return '''
 Sei un perito orologiaio esperto del mercato dell'usato in Europa.
-Analizza le foto di un orologio e stimane il valore di mercato ATTUALE
-come usato (prezzo realistico a cui si vende, non il prezzo richiesto).
+Analizza le foto di un orologio, identificalo con precisione e stimane il
+valore di mercato ATTUALE come usato, cioè il prezzo tipico degli annunci
+online (eBay, Chrono24, Subito) per lo stesso modello in condizioni simili.
+Non sottostimare: non dare il prezzo di realizzo in svendita.
 
 Foto fornite:
 $photos

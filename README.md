@@ -4,6 +4,19 @@ App Android che stima il valore di un orologio dalle foto, usando l'IA
 Google Gemini (piano gratuito). Ispirata al Watch Scanner di Chrono24, con in più
 foto multiple, modelli alternativi e segnali di possibile falso.
 
+## Novità v0.3
+- **Prezzo da annunci reali**: dopo il riconoscimento l'app legge gli annunci
+  eBay di Italia e Germania (API gratuita), scarta cinturini, ricambi, lotti e
+  prezzi fuori scala e calcola una mediana ponderata (gli usati pesano più dei
+  nuovi). Mostra quanti annunci ha usato e li elenca.
+- **Chrono24, Subito, eBay e Catawiki dentro l'app** con la ricerca già pronta
+  (Chrono24 ordinato per prezzo crescente).
+- **Più veloce**: foto più leggere e ragionamento dell'IA ridotto.
+- L'IA non sottostima più: senza annunci usa il prezzo tipico di mercato.
+
+Per i prezzi reali servono App ID e Cert ID gratuiti da
+https://developer.ebay.com/my/keys (Impostazioni → Prezzi reali da eBay).
+
 ## Novità v0.2
 - Un tocco per valutare: fotografi il quadrante e l'analisi parte subito.
 - Attivazione della chiave gratuita direttamente dalla schermata principale
@@ -33,6 +46,9 @@ foto multiple, modelli alternativi e segnali di possibile falso.
 4. Scatta la foto del quadrante e tocca **Valuta**.
 
 ## Limiti
+- L'API gratuita di eBay mostra gli annunci attivi (prezzi richiesti), non i
+  venduti. Chrono24 non ha un'API pubblica: lo apri dentro l'app ma il suo
+  prezzo non entra nel calcolo automatico.
 - Le stime sono indicative: l'IA può sbagliare referenza o prezzo, soprattutto
   con foto scure, riflessi o modelli rari.
 - Il piano gratuito di Gemini ha limiti di richieste al minuto/giorno e Google

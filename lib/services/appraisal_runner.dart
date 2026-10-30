@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../models/appraisal.dart';
+import 'ebay_client.dart';
 import 'gemini_client.dart';
 import 'storage.dart';
 
@@ -116,4 +117,29 @@ Future<T> appraiseWithFallback<T>({
   }
   throw last ??
       GeminiException('Nessun modello Gemini adatto trovato per questa chiave.');
+}
+
+/// Aggiunge il prezzo di mercato dagli annunci eBay reali.
+/// Restituisce la valutazione (eventualmente arricchita) e un avviso.
+Future<(WatchAppraisal, String?)> addMarketPrice(
+    Storage storage, WatchAppraisal a,
+    {void Function(String)? onStatus}) async {
+  if (!a.isWatch) return (a, null);
+  final keys = await storage.loadEbay();
+  if (keys.id.isEmpty || keys.secret.isEmpty) return (a, null);
+  onStatus?.call('Leggo gli annunci reali su eBay…');
+  try {
+    final m = await lookupMarket(EbayClient(keys.id, keys.secret),
+        brand: a.brand, model: a.model, reference: a.reference);
+    if (m == null) {
+      return (a.withMarket(null), 'Nessun annuncio eBay trovato per questo '
+          'modello: mostro la stima dell\'IA.');
+    }
+    final warn = m.reliable
+        ? null
+        : 'Solo ${m.count} annunci eBay trovati: mostro la stima dell\'IA.';
+    return (a.withMarket(m), warn);
+  } catch (e) {
+    return (a, 'eBay non disponibile ($e). Mostro la stima dell\'IA.');
+  }
 }

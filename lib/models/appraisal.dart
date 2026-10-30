@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'market.dart';
+
 /// Un segnale sospetto rilevato nelle foto (non è un'autenticazione).
 class RedFlag {
   final String severity; // alta | media | bassa
@@ -71,6 +73,9 @@ class WatchAppraisal {
   final List<String> sources;
   final List<AltMatch> alternatives;
 
+  /// Prezzo calcolato dagli annunci reali (se disponibile).
+  final MarketPrice? market;
+
   const WatchAppraisal({
     required this.isWatch,
     required this.brand,
@@ -94,7 +99,22 @@ class WatchAppraisal {
     this.morePhotos = const [],
     this.sources = const [],
     this.alternatives = const [],
+    this.market,
   });
+
+  bool get hasMarket => market != null && market!.reliable;
+
+  /// Prezzi da mostrare: quelli di mercato se affidabili, altrimenti la
+  /// stima dell'IA.
+  double? get displayLikely => hasMarket ? market!.likely : priceLikely;
+  double? get displayLow => hasMarket ? market!.low : priceLow;
+  double? get displayHigh => hasMarket ? market!.high : priceHigh;
+
+  WatchAppraisal withMarket(MarketPrice? m) {
+    final j = toJson();
+    j['market'] = m?.toJson();
+    return WatchAppraisal.fromJson(j);
+  }
 
   String get title {
     final parts = [brand, model].where((s) => s.trim().isNotEmpty).toList();
@@ -146,6 +166,9 @@ class WatchAppraisal {
               .where((a) => a.name.isNotEmpty)
               .toList()
           : const [],
+      market: (j['market'] is Map)
+          ? MarketPrice.fromJson(Map<String, dynamic>.from(j['market'] as Map))
+          : null,
     );
   }
 
@@ -172,6 +195,7 @@ class WatchAppraisal {
         'more_photos': morePhotos,
         'sources': sources,
         'alternatives': alternatives.map((a) => a.toJson()).toList(),
+        'market': market?.toJson(),
       };
 
   /// Testo pronto per un annuncio di vendita (stile Chrono24/Subito).
@@ -190,8 +214,8 @@ class WatchAppraisal {
     line('Condizioni', condition);
     b.writeln('• Scatola: ${box ? 'sì' : 'no'} – Garanzia/documenti: '
         '${papers ? 'sì' : 'no'}');
-    if (priceLikely != null) {
-      b.writeln('Prezzo richiesto: ${formatMoney(priceLikely, currency)}');
+    if (displayLikely != null) {
+      b.writeln('Prezzo richiesto: ${formatMoney(displayLikely, currency)}');
     }
     return b.toString().trim();
   }
@@ -234,8 +258,8 @@ class SavedValuation {
   /// Tutti i punti di prezzo, incluso quello attuale, in ordine di data.
   List<PricePoint> get timeline => [
         ...history,
-        if (appraisal.priceLikely != null)
-          PricePoint(date, appraisal.priceLikely!),
+        if (appraisal.displayLikely != null)
+          PricePoint(date, appraisal.displayLikely!),
       ];
 
   factory SavedValuation.fromJson(Map<String, dynamic> j) => SavedValuation(

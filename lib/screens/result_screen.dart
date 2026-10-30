@@ -7,7 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import '../models/appraisal.dart';
 import '../services/prompt.dart';
 import '../services/storage.dart';
+import '../models/market.dart';
 import 'analyze_screen.dart';
+import 'market_web_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final Storage storage;
@@ -103,7 +105,7 @@ class _ResultScreenState extends State<ResultScreen> {
     if (source == null) return;
     try {
       final x = await picker.pickImage(
-          source: source, maxWidth: 1800, maxHeight: 1800, imageQuality: 88);
+          source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
       if (x == null) return;
       HapticFeedback.selectionClick();
       setState(() {
@@ -204,6 +206,7 @@ class _ResultScreenState extends State<ResultScreen> {
       else ...[
         _Header(a: a),
         _PriceCard(a: a),
+        _MarketCard(a: a),
         _ImproveCard(
           slots: photoSlots.skip(1).where((s) => !_hasSlot(s)).toList(),
           onAdd: _addPhoto,
@@ -545,26 +548,47 @@ class _PriceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final hasRange = a.priceLow != null && a.priceHigh != null;
+    final m = a.hasMarket ? a.market : null;
+    final likely = a.displayLikely;
+    final low = a.displayLow;
+    final high = a.displayHigh;
+    final hasRange = low != null && high != null;
+    final muted = t.textTheme.bodyMedium
+        ?.copyWith(color: t.colorScheme.onSurfaceVariant);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Valore di mercato stimato (usato)',
-                style: t.textTheme.labelLarge
-                    ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                      m != null
+                          ? 'Prezzo di mercato (annunci reali)'
+                          : 'Stima dell\'IA (usato)',
+                      style: t.textTheme.labelLarge
+                          ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                ),
+                _Badge(
+                  text: m != null
+                      ? '${m.count} annunci'
+                      : 'senza annunci',
+                  good: m != null,
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: a.priceLikely ?? 0),
-                duration: const Duration(milliseconds: 900),
+                tween: Tween(begin: 0, end: likely ?? 0),
+                duration: const Duration(milliseconds: 700),
                 curve: Curves.easeOutCubic,
                 builder: (_, v, __) => Text(
-                    a.priceLikely == null ? '—' : formatMoney(v, a.currency),
+                    likely == null ? '—' : formatMoney(v, a.currency),
                     style: t.textTheme.displaySmall?.copyWith(
                         color: t.colorScheme.primary,
                         fontWeight: FontWeight.w700)),
@@ -572,30 +596,239 @@ class _PriceCard extends StatelessWidget {
             ),
             if (hasRange) ...[
               const SizedBox(height: 14),
-              _RangeBar(
-                  low: a.priceLow!, high: a.priceHigh!, likely: a.priceLikely),
+              _RangeBar(low: low, high: high, likely: likely),
               const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(formatMoney(a.priceLow, a.currency),
+                  Text(formatMoney(low, a.currency),
                       style: t.textTheme.bodySmall),
-                  Text(formatMoney(a.priceHigh, a.currency),
+                  Text(formatMoney(high, a.currency),
                       style: t.textTheme.bodySmall),
                 ],
               ),
             ],
-            if (a.retailNew != null) ...[
-              const SizedBox(height: 10),
-              Text('Prezzo del nuovo: ${formatMoney(a.retailNew, a.currency)}',
-                  style: t.textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            if (m != null) ...[
+              Text(
+                  'Mediana ponderata di ${m.count} annunci eBay attivi '
+                  '(${m.scanned} letti, scartati quelli fuori scala o non '
+                  'pertinenti). Affidabilità: ${m.reliability}.',
+                  style: muted),
+              if (m.newMedian != null) ...[
+                const SizedBox(height: 6),
+                Text('Nuovo su eBay: ${formatMoney(m.newMedian, a.currency)}',
+                    style: t.textTheme.bodyMedium),
+              ],
+              if (a.priceLikely != null) ...[
+                const SizedBox(height: 6),
+                Text('Stima dell\'IA: ${formatMoney(a.priceLikely, a.currency)}',
+                    style: muted),
+              ],
+            ] else ...[
+              if (a.retailNew != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                      'Prezzo del nuovo: ${formatMoney(a.retailNew, a.currency)}',
+                      style: t.textTheme.bodyMedium),
+                ),
+              if (a.priceRationale.isNotEmpty) Text(a.priceRationale, style: muted),
             ],
-            if (a.priceRationale.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(a.priceRationale,
-                  style: t.textTheme.bodyMedium
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String text;
+  final bool good;
+  const _Badge({required this.text, required this.good});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = good ? const Color(0xFF6BCB8B) : const Color(0xFFE8C468);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text,
+          style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// Annunci reali + mercati di riferimento (Chrono24, Subito, eBay).
+class _MarketCard extends StatelessWidget {
+  final WatchAppraisal a;
+  const _MarketCard({required this.a});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final m = a.market;
+    final q = marketQuery(
+        brand: a.brand, model: a.model, reference: a.reference);
+    final listings = m?.listings ?? const <Listing>[];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Confronta sui mercati', style: t.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text('Ricerca già pronta per "$q"',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => MarketWebScreen(
+                          title: 'Chrono24', url: chrono24Url(q)))),
+              icon: const Icon(Icons.watch),
+              label: const Text('Apri Chrono24 (prezzo crescente)'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => MarketWebScreen(
+                                title: 'Subito', url: subitoUrl(q)))),
+                    child: const Text('Subito'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => MarketWebScreen(
+                                title: 'eBay', url: ebaySearchUrl(q)))),
+                    child: const Text('eBay'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => MarketWebScreen(
+                                title: 'Catawiki', url: catawikiUrl(q)))),
+                    child: const Text('Catawiki'),
+                  ),
+                ),
+              ],
+            ),
+            if (listings.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Annunci usati per il calcolo',
+                  style: t.textTheme.labelLarge
                       ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 6),
+              for (final l in listings.take(8)) _ListingRow(l: l),
+              if (listings.length > 8)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      showDragHandle: true,
+                      builder: (_) => DraggableScrollableSheet(
+                        expand: false,
+                        initialChildSize: 0.7,
+                        builder: (_, sc) => ListView(
+                          controller: sc,
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          children: [
+                            for (final l in listings) _ListingRow(l: l),
+                          ],
+                        ),
+                      ),
+                    ),
+                    child: Text('Vedi tutti (${listings.length})'),
+                  ),
+                ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ListingRow extends StatelessWidget {
+  final Listing l;
+  const _ListingRow({required this.l});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: l.url.isEmpty
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      MarketWebScreen(title: l.market, url: Uri.parse(l.url)))),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: l.imageUrl == null
+                    ? const ColoredBox(color: Colors.black26)
+                    : Image.network(l.imageUrl!,
+                        fit: BoxFit.cover,
+                        cacheWidth: 144,
+                        errorBuilder: (_, __, ___) =>
+                            const ColoredBox(color: Colors.black26)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13)),
+                  Text(
+                      '${l.market}${l.condition.isEmpty ? '' : ' · ${l.condition}'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: t.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(formatMoney(l.price, l.currency),
+                style: TextStyle(
+                    color: t.colorScheme.primary,
+                    fontWeight: FontWeight.w700)),
           ],
         ),
       ),

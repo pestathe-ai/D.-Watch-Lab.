@@ -35,6 +35,10 @@ class GeminiClient {
   /// Diventa true se la ricerca web non era disponibile ed è stata saltata.
   bool searchUnavailable = false;
 
+  /// Ragionamento breve = risposta molto più veloce. Se il modello non
+  /// accetta l'impostazione, viene tolta automaticamente.
+  static bool fastThinking = true;
+
   GeminiClient(this.apiKey, {http.Client? client})
       : _http = client ?? http.Client();
 
@@ -114,6 +118,7 @@ class GeminiClient {
       'generationConfig': {
         'temperature': 0.2,
         if (!webSearch) 'responseMimeType': 'application/json',
+        if (fastThinking) 'thinkingConfig': {'thinkingLevel': 'low'},
       },
       if (webSearch)
         'tools': [
@@ -126,7 +131,7 @@ class GeminiClient {
       res = await _http
           .post(Uri.parse('$_base/models/$model:generateContent'),
               headers: _headers, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 120));
+          .timeout(const Duration(seconds: 75));
     } on TimeoutException {
       throw GeminiException('Il server non ha risposto in tempo. Riprova.', -1);
     }
@@ -134,6 +139,10 @@ class GeminiClient {
     if (res.statusCode != 200) {
       final msg = _explain(res);
       final lower = res.body.toLowerCase();
+      if (fastThinking && res.statusCode == 400 && lower.contains('thinking')) {
+        fastThinking = false;
+        return _appraise(model, photos, extraInfo, box, papers, webSearch);
+      }
       // Sul piano gratuito la ricerca Google non è inclusa: Google risponde
       // 429 (quota zero) o 400. In entrambi i casi riprovo senza ricerca.
       if (webSearch && res.statusCode == 429) {

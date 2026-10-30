@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/appraisal.dart';
 import '../services/prompt.dart';
 import '../services/storage.dart';
+import '../widgets/ebay_setup.dart';
 import '../widgets/key_setup.dart';
 import 'analyze_screen.dart';
 import 'result_screen.dart';
@@ -35,17 +36,46 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this, duration: const Duration(milliseconds: 1600))
     ..repeat();
   List<SavedValuation> recent = const [];
+  bool ebayConnected = true;
 
   @override
   void initState() {
     super.initState();
     _loadRecent();
+    _checkEbay();
+  }
+
+  Future<void> _checkEbay() async {
+    final k = await widget.storage.loadEbay();
+    if (mounted) {
+      setState(() => ebayConnected = k.id.isNotEmpty && k.secret.isNotEmpty);
+    }
+  }
+
+  Future<void> _openEbaySetup() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            16, 0, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+        child: SingleChildScrollView(
+          child: EbaySetupCard(
+            storage: widget.storage,
+            onConnected: () => Navigator.of(ctx).pop(),
+          ),
+        ),
+      ),
+    );
+    _checkEbay();
   }
 
   @override
   void didUpdateWidget(HomeScreen old) {
     super.didUpdateWidget(old);
     if (old.collectionVersion != widget.collectionVersion) _loadRecent();
+    _checkEbay();
   }
 
   Future<void> _loadRecent() async {
@@ -69,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen>
     XFile? x;
     try {
       x = await picker.pickImage(
-          source: source, maxWidth: 1800, maxHeight: 1800, imageQuality: 88);
+          source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +182,20 @@ class _HomeScreenState extends State<HomeScreen>
                 onCamera: () => _start(ImageSource.camera),
                 onGallery: () => _start(ImageSource.gallery),
               ),
+              if (hasKey && !ebayConnected) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: Icon(Icons.storefront_outlined,
+                        color: t.colorScheme.primary),
+                    title: const Text('Prezzi da annunci reali'),
+                    subtitle: const Text(
+                        'Collega eBay (gratis) per un prezzo di mercato vero'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _openEbaySetup,
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               const _Tips(),
               if (recent.isNotEmpty) ...[
@@ -339,7 +383,7 @@ class _RecentCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 2, 8, 0),
                 child: Text(
-                    formatMoney(v.appraisal.priceLikely, v.appraisal.currency),
+                    formatMoney(v.appraisal.displayLikely, v.appraisal.currency),
                     maxLines: 1,
                     style: TextStyle(
                         color: t.colorScheme.primary,

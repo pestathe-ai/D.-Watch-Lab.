@@ -1,7 +1,7 @@
 name: d_watch_lab
 description: "D. Watch Lab - valuta orologi da foto con l'IA."
 publish_to: 'none'
-version: 0.2.0+3
+version: 0.3.0+4
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -15,6 +15,7 @@ dependencies:
   path_provider: ^2.1.6
   path: any
   url_launcher: ^6.3.3
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:

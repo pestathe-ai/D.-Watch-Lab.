@@ -12,9 +12,9 @@ import 'result_screen.dart';
   var likely = 0.0, low = 0.0, high = 0.0;
   for (final v in items) {
     final a = v.appraisal;
-    likely += a.priceLikely ?? 0;
-    low += a.priceLow ?? a.priceLikely ?? 0;
-    high += a.priceHigh ?? a.priceLikely ?? 0;
+    likely += a.displayLikely ?? 0;
+    low += a.displayLow ?? a.displayLikely ?? 0;
+    high += a.displayHigh ?? a.displayLikely ?? 0;
   }
   return (likely: likely, low: low, high: high);
 }
@@ -199,7 +199,7 @@ class _WatchTile extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(formatMoney(a.priceLikely, a.currency),
+                          child: Text(formatMoney(a.displayLikely, a.currency),
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                   color: t.colorScheme.primary,

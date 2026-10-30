@@ -66,7 +66,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     'Leggo quadrante e scritte…',
     'Riconosco marca e modello…',
     'Cerco la referenza esatta…',
-    'Confronto i prezzi di mercato…',
+    'Preparo la ricerca dei prezzi…',
     'Controllo i dettagli sospetti…',
     'Calcolo il valore…',
   ];
@@ -94,21 +94,35 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       if (mounted && step < steps.length - 1) setState(() => step++);
     });
     scan.repeat(reverse: true);
-    runAppraisal(
-      storage: widget.storage,
-      photos: widget.photos,
-      labels: widget.labels,
-      extraInfo: widget.extraInfo,
-      box: widget.box,
-      papers: widget.papers,
-      onStatus: (s) {
-        if (mounted && myRun == run) setState(() => statusOverride = s);
-      },
-    ).then((r) {
+    _work(myRun);
+  }
+
+  Future<void> _work(int myRun) async {
+    void status(String s) {
+      if (mounted && myRun == run) setState(() => statusOverride = s);
+    }
+
+    try {
+      final ai = await runAppraisal(
+        storage: widget.storage,
+        photos: widget.photos,
+        labels: widget.labels,
+        extraInfo: widget.extraInfo,
+        box: widget.box,
+        papers: widget.papers,
+        onStatus: status,
+      );
       if (!mounted || myRun != run) return;
+      final (r, warn) =
+          await addMarketPrice(widget.storage, ai, onStatus: status);
+      if (!mounted || myRun != run) return;
+      if (warn != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(warn)));
+      }
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(r);
-    }).catchError((Object e) {
+    } catch (e) {
       if (!mounted || myRun != run) return;
       timer?.cancel();
       scan.stop();
@@ -117,7 +131,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
           ? 'Manca la chiave gratuita di Google. Collegala nella schermata '
               'principale o nelle Impostazioni.'
           : e.toString());
-    });
+    }
   }
 
   @override
