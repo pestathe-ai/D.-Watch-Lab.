@@ -21,9 +21,50 @@ void main() {
         {'id': 'meta-llama/llama-4-maverick-17b-128e-instruct'},
       ]);
       expect(m, 'meta-llama/llama-4-maverick-17b-128e-instruct');
-      expect(pickVisionModel(AltProvider.groq, [
-        {'id': 'llama-3.3-70b-versatile'}
-      ]), isNull);
+    });
+
+    test('Groq 2026: Qwen 3.8 per primo, audio escluso, testo in coda', () {
+      final c = visionCandidates(AltProvider.groq, [
+        {'id': 'llama-3.3-70b-versatile'},
+        {'id': 'whisper-large-v3'},
+        {'id': 'meta-models/muse-spark-open'},
+        {'id': 'qwen/qwen3.8-27b'},
+      ]);
+      expect(c.first, 'qwen/qwen3.8-27b');
+      expect(c[1], 'meta-models/muse-spark-open');
+      expect(c.last, 'llama-3.3-70b-versatile');
+      expect(c.contains('whisper-large-v3'), isFalse);
+    });
+
+    test('verifica: prova i modelli con una foto e tiene il primo che va',
+        () async {
+      final tried = <String>[];
+      final c = AltClient(const AltConfig(AltProvider.groq, 'K', ''),
+          client: MockClient((req) async {
+        if (req.method == 'GET') {
+          return jres({
+            'data': [
+              {'id': 'qwen/qwen3.8-27b'},
+              {'id': 'meta-models/muse-spark-open'},
+              {'id': 'llama-3.3-70b-versatile'},
+            ]
+          });
+        }
+        final b = jsonDecode(req.body) as Map;
+        final model = b['model'] as String;
+        tried.add(model);
+        final img = (b['messages'][0]['content'] as List)[1]['image_url']['url'];
+        expect(img, startsWith('data:image/jpeg;base64,/9j/'));
+        if (model == 'qwen/qwen3.8-27b') return jres({}, 400);
+        if (model == 'meta-models/muse-spark-open') return jres({}, 403);
+        return jres({'choices': []});
+      }));
+      expect(await c.resolveModel(), 'llama-3.3-70b-versatile');
+      expect(tried, [
+        'qwen/qwen3.8-27b',
+        'meta-models/muse-spark-open',
+        'llama-3.3-70b-versatile'
+      ]);
     });
 
     test('OpenRouter: solo gratuiti con immagini', () {
