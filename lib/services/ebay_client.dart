@@ -26,6 +26,7 @@ class EbayClient {
   static String? _token;
   static String? _tokenOwner;
   static DateTime _tokenExpiry = DateTime(2000);
+  static Future<String>? _pending;
 
   EbayClient(this.clientId, this.clientSecret, {http.Client? client})
       : _http = client ?? http.Client();
@@ -33,14 +34,20 @@ class EbayClient {
   static void resetToken() {
     _token = null;
     _tokenOwner = null;
+    _pending = null;
   }
 
-  Future<String> _getToken() async {
+  /// Un solo token condiviso anche tra richieste in parallelo.
+  Future<String> _getToken() {
     if (_token != null &&
         _tokenOwner == clientId &&
         DateTime.now().isBefore(_tokenExpiry)) {
-      return _token!;
+      return Future.value(_token!);
     }
+    return _pending ??= _fetchToken().whenComplete(() => _pending = null);
+  }
+
+  Future<String> _fetchToken() async {
     final basic = base64Encode(utf8.encode('$clientId:$clientSecret'));
     final res = await _http
         .post(Uri.parse(_tokenUrl),
