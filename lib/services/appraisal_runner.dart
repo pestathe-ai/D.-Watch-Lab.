@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../models/appraisal.dart';
@@ -72,8 +73,8 @@ Future<T> appraiseWithFallback<T>({
   required Future<void> Function(String model) onModelWorked,
   required Duration Function(int attempt) wait,
   void Function(String)? onStatus,
-  int maxModels = 3,
-  int triesPerModel = 3,
+  int maxModels = 2,
+  int triesPerModel = 2,
 }) async {
   final tried = <String>{};
   List<String>? ranked;
@@ -132,7 +133,8 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
   onStatus?.call('Leggo gli annunci reali su eBay…');
   try {
     final m = await lookupMarket(EbayClient(keys.id, keys.secret),
-        brand: a.brand, model: a.model, reference: a.reference);
+            brand: a.brand, model: a.model, reference: a.reference)
+        .timeout(const Duration(seconds: 15));
     if (m == null) {
       return (a.withMarket(null), 'Nessun annuncio eBay trovato per questo '
           'modello: mostro la stima dell\'IA.');
@@ -141,6 +143,8 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
         ? null
         : 'Solo ${m.count} annunci eBay trovati: mostro la stima dell\'IA.';
     return (a.withMarket(m), warn);
+  } on TimeoutException {
+    return (a, 'eBay non ha risposto in tempo: mostro la stima dell\'IA.');
   } catch (e) {
     return (a, 'eBay non disponibile ($e). Mostro la stima dell\'IA.');
   }

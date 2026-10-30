@@ -55,7 +55,7 @@ class GeminiClient {
   Future<List<String>> resolveModels() async {
     final res = await guardNetwork(() => _http
         .get(Uri.parse('$_base/models?pageSize=200'), headers: _headers)
-        .timeout(const Duration(seconds: 20)));
+        .timeout(const Duration(seconds: 12)));
     if (res.statusCode != 200) {
       throw GeminiException(_explain(res), res.statusCode);
     }
@@ -130,7 +130,7 @@ class GeminiClient {
     final res = await guardNetwork(() => _http
         .post(Uri.parse('$_base/models/$model:generateContent'),
             headers: _headers, body: jsonEncode(body))
-        .timeout(const Duration(seconds: 75)));
+        .timeout(const Duration(seconds: 35)));
 
     if (res.statusCode != 200) {
       final msg = _explain(res);

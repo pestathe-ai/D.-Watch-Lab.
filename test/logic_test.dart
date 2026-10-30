@@ -305,7 +305,7 @@ void main() {
         onStatus: statuses.add,
       );
       expect(r, 'ok:gemini-3.6-flash');
-      expect(calls, ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.6-flash']);
+      expect(calls, ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.6-flash']);
       expect(worked, 'gemini-3.6-flash');
       expect(statuses, contains('Provo un altro modello IA…'));
     });
@@ -359,7 +359,7 @@ void main() {
       expect(r, 'gemini-3.6-flash');
     });
 
-    test('tutti occupati: errore chiaro dopo massimo 3 modelli', () async {
+    test('tutti occupati: errore chiaro dopo massimo 2 modelli', () async {
       final calls = <String>[];
       await expectLater(
         appraiseWithFallback<String>(
@@ -375,7 +375,7 @@ void main() {
         ),
         throwsA(isA<GeminiException>()),
       );
-      expect(calls.toSet().length, 3);
+      expect(calls.toSet().length, 2);
     });
   });
 }

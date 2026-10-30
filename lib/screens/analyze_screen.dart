@@ -73,6 +73,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     'Calcolo il valore…',
   ];
   int step = 0;
+  int seconds = 0;
   String? statusOverride;
   String? error;
   Timer? timer;
@@ -92,8 +93,13 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       step = 0;
     });
     timer?.cancel();
-    timer = Timer.periodic(const Duration(milliseconds: 2600), (_) {
-      if (mounted && step < steps.length - 1) setState(() => step++);
+    seconds = 0;
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        seconds++;
+        if (seconds % 3 == 0 && step < steps.length - 1) step++;
+      });
     });
     scan.repeat(reverse: true);
     _work(myRun);
@@ -113,7 +119,11 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
         box: widget.box,
         papers: widget.papers,
         onStatus: status,
-      );
+      ).timeout(const Duration(seconds: 70),
+          onTimeout: () => throw GeminiException(
+              'Google non ha risposto entro un minuto. Di solito è la '
+              'connessione o un momento di traffico: riprova.',
+              -1));
       if (!mounted || myRun != run) return;
       final (r, warn) =
           await addMarketPrice(widget.storage, ai, onStatus: status);
@@ -251,7 +261,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
             ),
           ),
           const SizedBox(height: 10),
-          Text('Di solito 10–30 secondi',
+          Text('$seconds s · di solito 10–30 secondi',
               style: t.textTheme.bodySmall
                   ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
         ],
