@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../services/gemini_client.dart';
 import '../services/storage.dart';
+import '../widgets/backup_setup.dart';
 import '../widgets/ebay_setup.dart';
 import '../widgets/key_setup.dart';
 
@@ -148,6 +149,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
           EbaySetupCard(storage: widget.storage),
+          const SizedBox(height: 16),
+          BackupSetupCard(storage: widget.storage),
           const SizedBox(height: 16),
           Card(
             child: Column(

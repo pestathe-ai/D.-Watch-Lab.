@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../models/appraisal.dart';
 import '../models/market.dart';
+import 'alt_client.dart';
 import 'ebay_client.dart';
 import 'gemini_client.dart';
 import 'storage.dart';
@@ -35,28 +36,77 @@ Future<WatchAppraisal> runAppraisal({
     if (extraInfo.trim().isNotEmpty) extraInfo.trim(),
   ].join('. ');
 
-  return appraiseWithFallback(
-    client: client,
-    savedModel: settings.model.trim(),
-    run: (model) => client.appraise(
-      model: model,
-      photos: inputs,
-      extraInfo: info,
-      box: box,
-      papers: papers,
-      webSearch: settings.webSearch,
-    ),
-    onStatus: onStatus,
-    wait: wait,
-    onModelWorked: (model) async {
-      final now = await storage.loadSettings();
-      await storage.saveSettings(Settings(
-        apiKey: now.apiKey,
-        model: model,
-        webSearch: client.searchUnavailable ? false : now.webSearch,
-      ));
-    },
-  );
+  final backups = await storage.loadBackupKeys();
+  final alt = await storage.loadAlt();
+
+  try {
+    return await tryInOrder<WatchAppraisal>([
+      (
+        '',
+        () => appraiseWithFallback(
+              client: client,
+              savedModel: settings.model.trim(),
+              run: (model) => client.appraise(
+                model: model,
+                photos: inputs,
+                extraInfo: info,
+                box: box,
+                papers: papers,
+                webSearch: settings.webSearch,
+              ),
+              onStatus: onStatus,
+              wait: wait,
+              onModelWorked: (model) async {
+                final now = await storage.loadSettings();
+                await storage.saveSettings(Settings(
+                  apiKey: now.apiKey,
+                  model: model,
+                  webSearch: client.searchUnavailable ? false : now.webSearch,
+                ));
+              },
+            )
+      ),
+      // Chiavi Gemini di riserva: ogni progetto Google ha i suoi limiti.
+      for (var i = 0; i < backups.length; i++)
+        (
+          'Gemini al limite: uso la chiave di riserva ${i + 1}…',
+          () {
+            final c = GeminiClient(backups[i]);
+            return appraiseWithFallback(
+              client: c,
+              savedModel: '',
+              run: (model) => c.appraise(
+                model: model,
+                photos: inputs,
+                extraInfo: info,
+                box: box,
+                papers: papers,
+                webSearch: false,
+              ),
+              wait: wait,
+              onModelWorked: (_) async {},
+            );
+          }
+        ),
+      // Servizio alternativo gratuito.
+      if (alt != null)
+        (
+          'Gemini al limite: uso ${alt.provider.label}…',
+          () => AltClient(alt).appraise(
+                photos: inputs,
+                extraInfo: info,
+                box: box,
+                papers: papers,
+              )
+        ),
+    ], onStatus: onStatus);
+  } on GeminiException catch (e) {
+    if (e.status == 429 && backups.isEmpty && alt == null) {
+      throw GeminiException('${e.message}\n\nPer continuare subito, aggiungi '
+          'una riserva gratuita in Impostazioni → Riserva IA.', 429);
+    }
+    rethrow;
+  }
 }
 
 Future<List<PhotoInput>> loadPhotos(

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/appraisal.dart';
 import '../models/market.dart';
+import 'alt_client.dart';
 
 class Settings {
   final String apiKey;
@@ -46,6 +47,34 @@ class Storage {
   Future<void> saveEbay(String id, String secret) async {
     await _prefs.setString(_kEbayId, id.trim());
     await _prefs.setString(_kEbaySecret, secret.trim());
+  }
+
+  static const _kBackupKeys = 'gemini_backup_keys';
+  static const _kAltProvider = 'alt_provider';
+  static const _kAltKey = 'alt_key';
+  static const _kAltModel = 'alt_model';
+
+  /// Chiavi Gemini di riserva (una per progetto Google).
+  Future<List<String>> loadBackupKeys() async =>
+      (await _prefs.getStringList(_kBackupKeys) ?? const [])
+          .map((k) => k.trim())
+          .where((k) => k.isNotEmpty)
+          .toList();
+  Future<void> saveBackupKeys(List<String> keys) => _prefs.setStringList(
+      _kBackupKeys, keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toList());
+
+  /// Servizio IA alternativo gratuito (Groq, OpenRouter, Mistral).
+  Future<AltConfig?> loadAlt() async {
+    final p = AltProvider.byName(await _prefs.getString(_kAltProvider));
+    final k = (await _prefs.getString(_kAltKey) ?? '').trim();
+    if (p == null || k.isEmpty) return null;
+    return AltConfig(p, k, await _prefs.getString(_kAltModel) ?? '');
+  }
+
+  Future<void> saveAlt(AltProvider? p, String key, String model) async {
+    await _prefs.setString(_kAltProvider, p?.name ?? '');
+    await _prefs.setString(_kAltKey, key.trim());
+    await _prefs.setString(_kAltModel, model.trim());
   }
 
   static const _kFastModel = 'fast_model';

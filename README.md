@@ -13,6 +13,9 @@ foto multiple, modelli alternativi e segnali di possibile falso.
 - Ricerche eBay tutte in parallelo e memorizzate per 24 ore.
 - Modalità veloce (Impostazioni), foto più leggere.
 - Icona famiglia D. con orologio stile Tank, firma "un'app Dom Studio".
+- **Riserva IA gratuita** (Impostazioni → Riserva IA): se Gemini è al limite
+  l'app passa da sola a chiavi Gemini di altri progetti e poi a Groq,
+  OpenRouter o Mistral (piani gratuiti).
 
 ## Novità v0.3
 - **Prezzo da annunci reali**: dopo il riconoscimento l'app legge gli annunci
