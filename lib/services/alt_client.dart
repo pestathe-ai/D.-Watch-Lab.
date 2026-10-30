@@ -209,9 +209,11 @@ class AltClient {
     }
     final j = jsonDecode(utf8.decode(res.bodyBytes)) as Map;
     final choices = j['choices'] as List?;
-    final content = (choices != null && choices.isNotEmpty)
-        ? (choices.first as Map)['message']?['content']
-        : null;
+    Object? content;
+    if (choices != null && choices.isNotEmpty) {
+      final msg = (choices.first as Map)['message'];
+      if (msg is Map) content = msg['content'];
+    }
     final text = content is String
         ? content
         : (content is List)
