@@ -34,5 +34,7 @@ if [ "$(uname)" = "Darwin" ]; then
 fi
 
 flutter pub get
+# Icona dell'app (stile Marchio dom)
+dart run flutter_launcher_icons
 echo "--- manifest ---"; cat "$MANIFEST"
 grep -n "minSdk" android/app/build.gradle* || true

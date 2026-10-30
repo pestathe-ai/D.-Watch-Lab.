@@ -1,7 +1,7 @@
 name: d_watch_lab
 description: "D. Watch Lab - valuta orologi da foto con l'IA."
 publish_to: 'none'
-version: 0.3.3+7
+version: 0.4.0+8
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -21,6 +21,16 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#1D3A8A"
+  adaptive_icon_foreground: "assets/icon/foreground.png"
+  min_sdk_android: 24
+  remove_alpha_ios: true

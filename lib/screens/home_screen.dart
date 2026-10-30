@@ -213,6 +213,13 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
               ],
+              const SizedBox(height: 28),
+              Center(
+                child: Text('un\'app Dom Studio',
+                    style: t.textTheme.bodySmall?.copyWith(
+                        color: t.colorScheme.onSurfaceVariant,
+                        letterSpacing: 0.5)),
+              ),
             ],
           ),
         ),
