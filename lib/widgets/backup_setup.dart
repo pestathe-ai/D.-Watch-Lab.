@@ -93,7 +93,7 @@ class _BackupSetupCardState extends State<BackupSetupCard> {
           altModel = m;
           msgs.add('✓ ${provider.label} pronto (modello $m)');
         } catch (e) {
-          msgs.add('✗ ${provider.label}: $e');
+          msgs.add('✗ $e');
         }
       }
       HapticFeedback.mediumImpact();
@@ -180,7 +180,10 @@ class _BackupSetupCardState extends State<BackupSetupCard> {
             SegmentedButton<AltProvider>(
               segments: [
                 for (final p in AltProvider.values)
-                  ButtonSegment(value: p, label: Text(p.label)),
+                  ButtonSegment(
+                      value: p,
+                      label: FittedBox(
+                          fit: BoxFit.scaleDown, child: Text(p.label))),
               ],
               selected: {provider},
               showSelectedIcon: false,
