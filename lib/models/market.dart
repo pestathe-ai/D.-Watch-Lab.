@@ -118,7 +118,7 @@ const _excludeWords = [
   'vetro per', 'glass for', 'corona per', 'crown for', 'lotto', 'lot of',
   'konvolut', 'replica', 'homage', 'omaggio a', 'custodia per', 'case for',
   'watch box', 'scatola per', 'cassa per', 'movimento per', 'movement for',
-  'uhrwerk', 'manuale', 'manual only', 'adesivo', 'sticker', 'fibbia per',
+  'uhrwerk', 'solo manuale', 'manual only', 'adesivo', 'sticker', 'fibbia per',
   'buckle for', 'pellicola', 'screen protector', 'batteria per',
 ];
 
@@ -183,8 +183,10 @@ class MarketHints {
 bool _hasWord(String normalizedTitle, String word) {
   final w = normalize(word);
   if (w.isEmpty) return false;
-  return ' $normalizedTitle '.contains(' $w ') ||
-      (w.length >= 5 && normalizedTitle.contains(w));
+  final t = ' $normalizedTitle ';
+  if (w.contains(' ')) return t.contains(' $w');
+  // Una parola: basta che una parola del titolo inizi così ("1940s", "194").
+  return normalizedTitle.split(' ').any((x) => x.startsWith(w));
 }
 
 /// Tiene solo gli annunci che parlano davvero di quell'orologio.
