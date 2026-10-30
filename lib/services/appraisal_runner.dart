@@ -24,7 +24,7 @@ Future<WatchAppraisal> runAppraisal({
   final settings = await storage.loadSettings();
   if (settings.apiKey.trim().isEmpty) throw MissingKeyException();
   final client = clientOverride ?? GeminiClient(settings.apiKey.trim());
-  final wait = backoff ?? (a) => Duration(seconds: 2 * a);
+  final wait = backoff ?? (a) => Duration(milliseconds: 1500 * a);
 
   final inputs = <PhotoInput>[];
   for (var i = 0; i < photos.length; i++) {
@@ -73,7 +73,7 @@ Future<T> appraiseWithFallback<T>({
   required Duration Function(int attempt) wait,
   void Function(String)? onStatus,
   int maxModels = 3,
-  int triesPerModel = 2,
+  int triesPerModel = 3,
 }) async {
   final tried = <String>{};
   List<String>? ranked;
@@ -102,7 +102,9 @@ Future<T> appraiseWithFallback<T>({
       } on GeminiException catch (e) {
         last = e;
         if (e.transient && attempt < triesPerModel) {
-          onStatus?.call('Google è occupato, riprovo…');
+          onStatus?.call(e.status == -1
+              ? 'Connessione interrotta, riprovo…'
+              : 'Google è occupato, riprovo…');
           await Future<void>.delayed(wait(attempt));
           continue;
         }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io' show SocketException, HandshakeException, HttpException;
 
 import 'package:http/http.dart' as http;
 
@@ -52,9 +53,9 @@ class GeminiClient {
 
   /// Tutti i modelli adatti per questa chiave, dal migliore.
   Future<List<String>> resolveModels() async {
-    final res = await _http
+    final res = await guardNetwork(() => _http
         .get(Uri.parse('$_base/models?pageSize=200'), headers: _headers)
-        .timeout(const Duration(seconds: 20));
+        .timeout(const Duration(seconds: 20)));
     if (res.statusCode != 200) {
       throw GeminiException(_explain(res), res.statusCode);
     }
@@ -126,15 +127,10 @@ class GeminiClient {
         ],
     };
 
-    final http.Response res;
-    try {
-      res = await _http
-          .post(Uri.parse('$_base/models/$model:generateContent'),
-              headers: _headers, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 75));
-    } on TimeoutException {
-      throw GeminiException('Il server non ha risposto in tempo. Riprova.', -1);
-    }
+    final res = await guardNetwork(() => _http
+        .post(Uri.parse('$_base/models/$model:generateContent'),
+            headers: _headers, body: jsonEncode(body))
+        .timeout(const Duration(seconds: 75)));
 
     if (res.statusCode != 200) {
       final msg = _explain(res);
@@ -193,6 +189,32 @@ class GeminiClient {
       default:
         return 'Errore ${res.statusCode}: $detail';
     }
+  }
+}
+
+/// Trasforma i problemi di rete (connessione interrotta, cambio Wi-Fi/dati,
+/// timeout) in un errore temporaneo che l'app riprova da sola.
+Future<http.Response> guardNetwork(Future<http.Response> Function() call) async {
+  try {
+    return await call();
+  } on TimeoutException {
+    throw GeminiException(
+        'Google non ha risposto in tempo. Controlla la connessione e riprova.',
+        -1);
+  } on SocketException {
+    throw GeminiException(
+        'Connessione interrotta. Controlla internet e riprova.', -1);
+  } on HandshakeException {
+    throw GeminiException(
+        'Connessione interrotta. Controlla internet e riprova.', -1);
+  } on HttpException {
+    throw GeminiException(
+        'Connessione interrotta. Controlla internet e riprova.', -1);
+  } on http.ClientException {
+    throw GeminiException(
+        'Connessione interrotta (rete cambiata o app in background). '
+        'Riprova tenendo l\'app aperta.',
+        -1);
   }
 }
 

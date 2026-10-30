@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../models/appraisal.dart';
 import '../services/appraisal_runner.dart';
+import '../services/ebay_client.dart';
+import '../services/gemini_client.dart';
 import '../services/storage.dart';
 
 /// Apre la schermata di analisi e restituisce il risultato (o null).
@@ -130,7 +132,10 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       setState(() => error = e is MissingKeyException
           ? 'Manca la chiave gratuita di Google. Collegala nella schermata '
               'principale o nelle Impostazioni.'
-          : e.toString());
+          : (e is GeminiException || e is EbayException)
+              ? e.toString()
+              : 'Qualcosa è andato storto. Controlla la connessione e '
+                  'riprova.\n\n($e)');
     }
   }
 
