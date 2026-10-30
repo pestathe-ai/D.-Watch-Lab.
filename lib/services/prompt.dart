@@ -188,3 +188,28 @@ List<String> rankModels(List<Map<String, dynamic>> models) {
   candidates.sort((a, b) => score(b).compareTo(score(a)));
   return candidates.toSet().toList();
 }
+
+/// Richiesta lampo: solo identificazione, risposta minima.
+String buildIdentifyPrompt({String extraInfo = ''}) {
+  final extra = extraInfo.trim().isEmpty ? '' : '\nInfo del proprietario: ${extraInfo.trim()}';
+  return '''
+Sei un esperto di orologi. Identifica l'orologio nella foto leggendo con cura
+le scritte sul quadrante (marca, nome del modello) ed eventuali incisioni.$extra
+Rispondi SOLO con JSON, senza altro testo:
+{"is_watch": true, "brand": "", "model": "", "reference": "o null", "confidence": 0}
+model = nome commerciale del modello (es. "Submariner Date", "Tank Must",
+"Eco-Drive"), senza ripetere la marca. reference = codice referenza solo se
+leggibile o certo, altrimenti null. confidence 0-100. Se non è un orologio,
+is_watch false.
+'''
+      .trim();
+}
+
+/// Il modello più rapido disponibile (Flash-Lite più recente, altrimenti il
+/// primo della classifica).
+String? pickFastModel(List<Map<String, dynamic>> models) {
+  final ranked = rankModels(models);
+  final lite = ranked.where((n) => n.contains('lite')).toList();
+  if (lite.isNotEmpty) return lite.first;
+  return ranked.isEmpty ? null : ranked.first;
+}

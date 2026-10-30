@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'dart:io';
 
 import '../models/appraisal.dart';
+import '../models/market.dart';
 import 'ebay_client.dart';
 import 'gemini_client.dart';
 import 'storage.dart';
@@ -21,25 +21,19 @@ Future<WatchAppraisal> runAppraisal({
   void Function(String)? onStatus,
   GeminiClient? clientOverride,
   Duration Function(int attempt)? backoff,
+  String? hint,
 }) async {
   final settings = await storage.loadSettings();
   if (settings.apiKey.trim().isEmpty) throw MissingKeyException();
   final client = clientOverride ?? GeminiClient(settings.apiKey.trim());
-  final wait = backoff ?? (a) => Duration(milliseconds: 1500 * a);
+  final wait = backoff ?? (a) => Duration(seconds: 2 * a);
 
-  final inputs = <PhotoInput>[];
-  for (var i = 0; i < photos.length; i++) {
-    final bytes = await photos[i].readAsBytes();
-    final ext = photos[i].path.toLowerCase();
-    final mime = ext.endsWith('.png')
-        ? 'image/png'
-        : ext.endsWith('.webp')
-            ? 'image/webp'
-            : (ext.endsWith('.heic') || ext.endsWith('.heif'))
-                ? 'image/heic'
-                : 'image/jpeg';
-    inputs.add(PhotoInput(labels[i], bytes, mimeType: mime));
-  }
+  final inputs = await loadPhotos(photos, labels);
+  final info = [
+    if (hint != null && hint.trim().isNotEmpty)
+      'Identificazione preliminare da verificare: ${hint.trim()}',
+    if (extraInfo.trim().isNotEmpty) extraInfo.trim(),
+  ].join('. ');
 
   return appraiseWithFallback(
     client: client,
@@ -47,7 +41,7 @@ Future<WatchAppraisal> runAppraisal({
     run: (model) => client.appraise(
       model: model,
       photos: inputs,
-      extraInfo: extraInfo,
+      extraInfo: info,
       box: box,
       papers: papers,
       webSearch: settings.webSearch,
@@ -65,6 +59,60 @@ Future<WatchAppraisal> runAppraisal({
   );
 }
 
+Future<List<PhotoInput>> loadPhotos(
+    List<File> photos, List<String> labels) async {
+  final inputs = <PhotoInput>[];
+  for (var i = 0; i < photos.length; i++) {
+    final bytes = await photos[i].readAsBytes();
+    final ext = photos[i].path.toLowerCase();
+    final mime = ext.endsWith('.png')
+        ? 'image/png'
+        : ext.endsWith('.webp')
+            ? 'image/webp'
+            : (ext.endsWith('.heic') || ext.endsWith('.heif'))
+                ? 'image/heic'
+                : 'image/jpeg';
+    inputs.add(PhotoInput(labels[i], bytes, mimeType: mime));
+  }
+  return inputs;
+}
+
+/// Riconoscimento lampo (marca, modello, referenza). In modalità veloce usa
+/// il modello più leggero. Restituisce null se non riesce: in quel caso si
+/// procede con l'analisi completa come prima.
+Future<WatchAppraisal?> runIdentify({
+  required Storage storage,
+  required List<File> photos,
+  required List<String> labels,
+  String extraInfo = '',
+}) async {
+  final settings = await storage.loadSettings();
+  if (settings.apiKey.trim().isEmpty) throw MissingKeyException();
+  final client = GeminiClient(settings.apiKey.trim());
+  try {
+    var model = settings.model.trim();
+    if (await storage.loadFastMode()) {
+      model = await storage.loadFastModel();
+      if (model.isEmpty) {
+        model = await client.resolveFastModel();
+        await storage.saveFastModel(model);
+      }
+    }
+    if (model.isEmpty) model = await client.resolveModel();
+    final inputs = await loadPhotos(photos, labels);
+    final r = await client.identify(
+        model: model, photos: inputs, extraInfo: extraInfo);
+    if (r.isWatch && r.brand.isEmpty && r.model.isEmpty) return null;
+    return r;
+  } on GeminiException catch (e) {
+    // Modello leggero sparito: lo ricerco la prossima volta.
+    if (e.status == 404) await storage.saveFastModel('');
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Logica dei tentativi, separata per poterla testare.
 Future<T> appraiseWithFallback<T>({
   required GeminiClient client,
@@ -73,7 +121,7 @@ Future<T> appraiseWithFallback<T>({
   required Future<void> Function(String model) onModelWorked,
   required Duration Function(int attempt) wait,
   void Function(String)? onStatus,
-  int maxModels = 2,
+  int maxModels = 3,
   int triesPerModel = 2,
 }) async {
   final tried = <String>{};
@@ -103,9 +151,7 @@ Future<T> appraiseWithFallback<T>({
       } on GeminiException catch (e) {
         last = e;
         if (e.transient && attempt < triesPerModel) {
-          onStatus?.call(e.status == -1
-              ? 'Connessione interrotta, riprovo…'
-              : 'Google è occupato, riprovo…');
+          onStatus?.call('Google è occupato, riprovo…');
           await Future<void>.delayed(wait(attempt));
           continue;
         }
@@ -132,9 +178,14 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
   if (keys.id.isEmpty || keys.secret.isEmpty) return (a, null);
   onStatus?.call('Leggo gli annunci reali su eBay…');
   try {
-    final m = await lookupMarket(EbayClient(keys.id, keys.secret),
-            brand: a.brand, model: a.model, reference: a.reference)
-        .timeout(const Duration(seconds: 25));
+    final key = normalize(
+        marketQuery(brand: a.brand, model: a.model, reference: a.reference));
+    var m = await storage.cachedMarket(key);
+    if (m == null) {
+      m = await lookupMarket(EbayClient(keys.id, keys.secret),
+          brand: a.brand, model: a.model, reference: a.reference);
+      if (m != null) await storage.cacheMarket(key, m);
+    }
     if (m == null) {
       return (a.withMarket(null), 'Nessun annuncio eBay trovato per questo '
           'modello: mostro la stima dell\'IA.');
@@ -143,8 +194,6 @@ Future<(WatchAppraisal, String?)> addMarketPrice(
         ? null
         : 'Solo ${m.count} annunci eBay trovati: mostro la stima dell\'IA.';
     return (a.withMarket(m), warn);
-  } on TimeoutException {
-    return (a, 'eBay non ha risposto in tempo: mostro la stima dell\'IA.');
   } catch (e) {
     return (a, 'eBay non disponibile ($e). Mostro la stima dell\'IA.');
   }

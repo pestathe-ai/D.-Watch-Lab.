@@ -57,7 +57,7 @@ class EbayClient {
             },
             body: 'grant_type=client_credentials&scope='
                 '${Uri.encodeComponent('https://api.ebay.com/oauth/api_scope')}')
-        .timeout(const Duration(seconds: 12));
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw EbayException(res.statusCode == 401 || res.statusCode == 400
           ? 'Codici eBay non validi. Controlla Client ID e Client Secret '
@@ -93,7 +93,7 @@ class EbayClient {
       'Authorization': 'Bearer $token',
       'X-EBAY-C-MARKETPLACE-ID': marketplace,
       'Accept-Language': 'it-IT',
-    }).timeout(const Duration(seconds: 12));
+    }).timeout(const Duration(seconds: 10));
     if (res.statusCode == 401) {
       resetToken();
       throw EbayException('Accesso eBay scaduto, riprova.');
@@ -156,30 +156,23 @@ Future<MarketPrice?> lookupMarket(
     }
   }
 
-  Future<void> run(String q) async {
-    final results = await Future.wait([
+  // Tutte le ricerche partono insieme (Italia e Germania, referenza e
+  // nome del modello): il tempo è quello della più lenta, non la somma.
+  final precise = marketQuery(brand: brand, model: model, reference: reference);
+  final hasRef = reference != null && reference.trim().isNotEmpty;
+  final broad = marketQuery(
+      brand: brand, model: model, reference: reference, withReference: false);
+  final queries = {precise, if (hasRef) broad};
+  final results = await Future.wait([
+    for (final q in queries) ...[
       ebay.search(q, marketplace: 'EBAY_IT'),
       ebay.search(q, marketplace: 'EBAY_DE').catchError((_) => <Listing>[]),
-    ]);
-    for (final r in results) {
-      addAll(r);
-    }
+    ]
+  ]);
+  for (final r in results) {
+    addAll(r);
   }
-
-  final precise = marketQuery(brand: brand, model: model, reference: reference);
-  await run(precise);
-  var price = computeMarketPrice(all,
+  final price = computeMarketPrice(all,
       brand: brand, model: model, reference: reference, query: precise);
-
-  final hasRef = reference != null && reference.trim().isNotEmpty;
-  if ((price == null || price.count < 6) && hasRef) {
-    final broad = marketQuery(
-        brand: brand, model: model, reference: reference, withReference: false);
-    if (broad != precise) {
-      await run(broad);
-      price = computeMarketPrice(all,
-          brand: brand, model: model, reference: reference, query: broad);
-    }
-  }
   return price;
 }

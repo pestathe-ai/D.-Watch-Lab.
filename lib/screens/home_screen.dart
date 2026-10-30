@@ -99,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen>
     XFile? x;
     try {
       x = await picker.pickImage(
-          source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
+          source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 80);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -118,7 +118,8 @@ class _HomeScreenState extends State<HomeScreen>
       MaterialPageRoute(
         builder: (_) => ResultScreen(
           storage: widget.storage,
-          appraisal: result,
+          appraisal: result.appraisal,
+          detailed: result.detailed,
           photos: [file],
           labels: labels,
         ),

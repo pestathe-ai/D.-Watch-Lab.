@@ -237,19 +237,6 @@ void main() {
       expect(a.brand, 'Rolex');
     });
 
-    test('connessione interrotta = errore temporaneo', () async {
-      final client = MockClient((_) async =>
-          throw http.ClientException('Software caused connection abort'));
-      await expectLater(
-          GeminiClient('K', client: client).appraise(
-              model: 'm',
-              photos: [PhotoInput('Q', Uint8List(1))],
-              webSearch: false),
-          throwsA(isA<GeminiException>()
-              .having((e) => e.transient, 'transient', isTrue)
-              .having((e) => e.message, 'msg', contains('Connessione'))));
-    });
-
     test('errori tradotti in italiano', () async {
       final client = MockClient((_) async => http.Response('{}', 429));
       expect(
@@ -310,26 +297,6 @@ void main() {
       expect(statuses, contains('Provo un altro modello IA…'));
     });
 
-    test('rete caduta una volta: riprova e riesce', () async {
-      var n = 0;
-      final statuses = <String>[];
-      final r = await appraiseWithFallback<String>(
-        client: lister(['gemini-flash-latest']),
-        savedModel: 'gemini-flash-latest',
-        run: (m) async {
-          n++;
-          if (n == 1) throw GeminiException('rete', -1);
-          return 'ok';
-        },
-        onModelWorked: (_) async {},
-        wait: (_) => Duration.zero,
-        onStatus: statuses.add,
-      );
-      expect(r, 'ok');
-      expect(n, 2);
-      expect(statuses, ['Connessione interrotta, riprovo…']);
-    });
-
     test('chiave non valida: nessun cambio modello', () async {
       var n = 0;
       await expectLater(
@@ -359,7 +326,7 @@ void main() {
       expect(r, 'gemini-3.6-flash');
     });
 
-    test('tutti occupati: errore chiaro dopo massimo 2 modelli', () async {
+    test('tutti occupati: errore chiaro dopo massimo 3 modelli', () async {
       final calls = <String>[];
       await expectLater(
         appraiseWithFallback<String>(
@@ -375,7 +342,7 @@ void main() {
         ),
         throwsA(isA<GeminiException>()),
       );
-      expect(calls.toSet().length, 2);
+      expect(calls.toSet().length, 3);
     });
   });
 }

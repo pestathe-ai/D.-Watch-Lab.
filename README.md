@@ -4,6 +4,16 @@ App Android che stima il valore di un orologio dalle foto, usando l'IA
 Google Gemini (piano gratuito). Ispirata al Watch Scanner di Chrono24, con in più
 foto multiple, modelli alternativi e segnali di possibile falso.
 
+## Novità v0.5
+- **Prezzo in pochi secondi**: un primo riconoscimento lampo (solo marca,
+  modello, referenza) fa partire subito la ricerca eBay; l'analisi completa
+  (condizioni, segnali di falso) corre in parallelo e si aggiunge dopo.
+- Se l'analisi completa riconosce un modello diverso, il prezzo eBay viene
+  ricalcolato da solo.
+- Ricerche eBay tutte in parallelo e memorizzate per 24 ore.
+- Modalità veloce (Impostazioni), foto più leggere.
+- Icona famiglia D. con orologio stile Tank, firma "un'app Dom Studio".
+
 ## Novità v0.3
 - **Prezzo da annunci reali**: dopo il riconoscimento l'app legge gli annunci
   eBay di Italia e Germania (API gratuita), scarta cinturini, ricambi, lotti e

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/appraisal.dart';
+import '../services/appraisal_runner.dart';
 import '../services/prompt.dart';
 import '../services/storage.dart';
 import '../models/market.dart';
@@ -23,6 +24,9 @@ class ResultScreen extends StatefulWidget {
   /// Presente se l'orologio è già in collezione.
   final SavedValuation? saved;
 
+  /// Analisi dettagliata che arriva dopo il prezzo (se c'è).
+  final Future<WatchAppraisal?>? detailed;
+
   const ResultScreen({
     super.key,
     required this.storage,
@@ -33,6 +37,7 @@ class ResultScreen extends StatefulWidget {
     this.papers = false,
     this.extraInfo = '',
     this.saved,
+    this.detailed,
   });
 
   factory ResultScreen.fromSaved(Storage storage, SavedValuation v) =>
@@ -68,6 +73,49 @@ class _ResultScreenState extends State<ResultScreen> {
   bool pending = false;
   bool busy = false;
   bool changed = false;
+
+  /// Analisi dettagliata in arrivo / non riuscita.
+  bool detailing = false;
+  bool detailFailed = false;
+  int detailRun = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.detailed != null) _attachDetailed(widget.detailed!);
+  }
+
+  void _attachDetailed(Future<WatchAppraisal?> f) {
+    final myRun = ++detailRun;
+    detailing = true;
+    detailFailed = false;
+    f.then((d) async {
+      if (!mounted || myRun != detailRun) return;
+      if (d == null) {
+        setState(() {
+          detailing = false;
+          detailFailed = true;
+          pending = true;
+        });
+        return;
+      }
+      var merged = d.withMarket(a.market);
+      // Se l'analisi dettagliata ha riconosciuto un altro modello,
+      // ricalcolo il prezzo eBay con il nome giusto.
+      final same = normalize('${a.brand} ${a.model} ${a.reference ?? ''}') ==
+          normalize('${d.brand} ${d.model} ${d.reference ?? ''}');
+      if (!same && d.isWatch) {
+        final (m, _) = await addMarketPrice(widget.storage, d);
+        merged = m.market != null ? m : merged;
+      }
+      if (!mounted || myRun != detailRun) return;
+      setState(() {
+        a = merged;
+        detailing = false;
+      });
+      if (saved != null) await _persist(replace: true);
+    });
+  }
 
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
@@ -105,7 +153,7 @@ class _ResultScreenState extends State<ResultScreen> {
     if (source == null) return;
     try {
       final x = await picker.pickImage(
-          source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 82);
+          source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 80);
       if (x == null) return;
       HapticFeedback.selectionClick();
       setState(() {
@@ -119,17 +167,21 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> _revalue() async {
-    final fresh = await analyze(context,
+    final res = await analyze(context,
         storage: widget.storage,
         photos: photos,
         labels: labels,
         extraInfo: extraCtrl.text,
         box: box,
         papers: papers);
-    if (fresh == null || !mounted) return;
+    if (res == null || !mounted) return;
     setState(() {
-      a = fresh;
+      a = res.appraisal;
       pending = false;
+      detailRun++;
+      detailing = false;
+      detailFailed = false;
+      if (res.detailed != null) _attachDetailed(res.detailed!);
     });
     if (saved != null) {
       await _persist(replace: true);
@@ -224,9 +276,20 @@ class _ResultScreenState extends State<ResultScreen> {
           }),
           onExtraChanged: () => setState(() => pending = true),
         ),
-        if (a.alternatives.isNotEmpty) _AlternativesCard(a: a),
-        _FlagsCard(a: a),
-        _DetailsCard(a: a, box: box, papers: papers),
+        if (detailing)
+          const _PendingCard()
+        else if (detailFailed)
+          const _InfoCard(
+            icon: Icons.info_outline,
+            title: 'Dettagli non disponibili',
+            body: 'Il prezzo è valido, ma l\'analisi di condizioni e segnali '
+                'di falso non è arrivata. Tocca "Rivaluta" per riprovare.',
+          )
+        else ...[
+          if (a.alternatives.isNotEmpty) _AlternativesCard(a: a),
+          _FlagsCard(a: a),
+          _DetailsCard(a: a, box: box, papers: papers),
+        ],
         if (saved != null && saved!.timeline.length > 1)
           _HistoryCard(points: saved!.timeline, currency: a.currency),
         if (a.comparables.isNotEmpty || a.sources.isNotEmpty)
@@ -336,6 +399,42 @@ class _FadeIn extends StatelessWidget {
         child: Transform.translate(offset: Offset(0, 16 * (1 - v)), child: c),
       ),
       child: child,
+    );
+  }
+}
+
+class _PendingCard extends StatelessWidget {
+  const _PendingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Analisi dettagliata in corso…',
+                      style: t.textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text('Condizioni, segnali di falso e alternative arrivano '
+                      'tra poco. Il prezzo qui sopra è già quello di mercato.',
+                      style: TextStyle(color: t.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

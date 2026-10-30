@@ -19,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final keyCtrl = TextEditingController();
   final modelCtrl = TextEditingController();
   bool webSearch = false;
+  bool fastMode = true;
   bool obscure = true;
   bool busy = false;
   String? status;
@@ -31,7 +32,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final s = await widget.storage.loadSettings();
+    final fast = await widget.storage.loadFastMode();
     if (!mounted) return;
+    fastMode = fast;
     setState(() {
       keyCtrl.text = s.apiKey;
       modelCtrl.text = s.model;
@@ -149,6 +152,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Card(
             child: Column(
               children: [
+                SwitchListTile(
+                  title: const Text('Modalità veloce'),
+                  subtitle: const Text(
+                      'Riconosce l\'orologio con il modello IA più rapido e '
+                      'mostra subito il prezzo eBay; i dettagli arrivano dopo. '
+                      'Spenta: riconoscimento con il modello più preciso.'),
+                  value: fastMode,
+                  onChanged: (v) {
+                    setState(() => fastMode = v);
+                    widget.storage.saveFastMode(v);
+                  },
+                ),
                 SwitchListTile(
                   title: const Text('Prezzi reali dal web'),
                   subtitle: const Text(

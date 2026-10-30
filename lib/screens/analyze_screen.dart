@@ -6,12 +6,18 @@ import 'package:flutter/services.dart';
 
 import '../models/appraisal.dart';
 import '../services/appraisal_runner.dart';
-import '../services/ebay_client.dart';
-import '../services/gemini_client.dart';
 import '../services/storage.dart';
 
+/// Risultato dell'analisi: la valutazione da mostrare subito e, se c'è,
+/// l'analisi dettagliata che arriva dopo (segnali di falso, condizioni…).
+class AnalysisResult {
+  final WatchAppraisal appraisal;
+  final Future<WatchAppraisal?>? detailed;
+  const AnalysisResult(this.appraisal, [this.detailed]);
+}
+
 /// Apre la schermata di analisi e restituisce il risultato (o null).
-Future<WatchAppraisal?> analyze(
+Future<AnalysisResult?> analyze(
   BuildContext context, {
   required Storage storage,
   required List<File> photos,
@@ -20,7 +26,7 @@ Future<WatchAppraisal?> analyze(
   bool box = false,
   bool papers = false,
 }) {
-  return Navigator.of(context).push<WatchAppraisal>(PageRouteBuilder(
+  return Navigator.of(context).push<AnalysisResult>(PageRouteBuilder(
     transitionDuration: const Duration(milliseconds: 350),
     reverseTransitionDuration: const Duration(milliseconds: 250),
     pageBuilder: (_, __, ___) => AnalyzeScreen(
@@ -68,12 +74,14 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     'Leggo quadrante e scritte…',
     'Riconosco marca e modello…',
     'Cerco la referenza esatta…',
-    'Preparo la ricerca dei prezzi…',
-    'Controllo i dettagli sospetti…',
+    'Controllo i dettagli…',
     'Calcolo il valore…',
   ];
   int step = 0;
   int seconds = 0;
+
+  /// Orologio riconosciuto nel primo passaggio (mostrato subito).
+  String? found;
   String? statusOverride;
   String? error;
   Timer? timer;
@@ -90,10 +98,11 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
     setState(() {
       error = null;
       statusOverride = null;
+      found = null;
       step = 0;
+      seconds = 0;
     });
     timer?.cancel();
-    seconds = 0;
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -110,30 +119,84 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       if (mounted && myRun == run) setState(() => statusOverride = s);
     }
 
-    try {
-      final ai = await runAppraisal(
-        storage: widget.storage,
-        photos: widget.photos,
-        labels: widget.labels,
-        extraInfo: widget.extraInfo,
-        box: widget.box,
-        papers: widget.papers,
-        onStatus: status,
-      ).timeout(const Duration(seconds: 180),
-          onTimeout: () => throw GeminiException(
-              'Google non ha risposto entro 3 minuti. Di solito è la '
-              'connessione o un momento di traffico: riprova.',
-              -2));
-      if (!mounted || myRun != run) return;
-      final (r, warn) =
-          await addMarketPrice(widget.storage, ai, onStatus: status);
-      if (!mounted || myRun != run) return;
+    bool alive() => mounted && myRun == run;
+
+    void finish(AnalysisResult r, String? warn) {
+      if (!alive()) return;
       if (warn != null) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(warn)));
       }
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(r);
+    }
+
+    try {
+      // 1) Riconoscimento lampo.
+      final id = await runIdentify(
+        storage: widget.storage,
+        photos: widget.photos,
+        labels: widget.labels,
+        extraInfo: widget.extraInfo,
+      );
+      if (!alive()) return;
+
+      if (id == null || !id.isWatch) {
+        // Riconoscimento lampo non riuscito: analisi completa come prima.
+        final ai = await runAppraisal(
+          storage: widget.storage,
+          photos: widget.photos,
+          labels: widget.labels,
+          extraInfo: widget.extraInfo,
+          box: widget.box,
+          papers: widget.papers,
+          onStatus: status,
+        );
+        if (!alive()) return;
+        final (r, warn) =
+            await addMarketPrice(widget.storage, ai, onStatus: status);
+        finish(AnalysisResult(r), warn);
+        return;
+      }
+
+      setState(() => found = [
+            id.title,
+            if (id.reference != null) 'ref. ${id.reference}'
+          ].join(' · '));
+
+      // 2) Analisi dettagliata in parallelo, mentre cerco i prezzi.
+      Object? fullError;
+      final full = runAppraisal(
+        storage: widget.storage,
+        photos: widget.photos,
+        labels: widget.labels,
+        extraInfo: widget.extraInfo,
+        box: widget.box,
+        papers: widget.papers,
+        hint: [id.title, if (id.reference != null) 'ref. ${id.reference}']
+            .join(' '),
+      ).then<WatchAppraisal?>((v) => v, onError: (Object e) {
+        fullError = e;
+        return null;
+      });
+
+      final (quick, warn) =
+          await addMarketPrice(widget.storage, id, onStatus: status);
+      if (!alive()) return;
+
+      if (quick.hasMarket) {
+        // Prezzo dagli annunci pronto: mostro subito, il resto arriva dopo.
+        finish(AnalysisResult(quick, full), null);
+        return;
+      }
+
+      // Pochi annunci o eBay non collegato: serve la stima dell'IA.
+      status('Calcolo la stima dell\'IA…');
+      final ai = await full;
+      if (!alive()) return;
+      if (ai == null) throw fullError ?? Exception('Analisi non riuscita');
+      final merged = quick.market == null ? ai : ai.withMarket(quick.market);
+      finish(AnalysisResult(merged), warn);
     } catch (e) {
       if (!mounted || myRun != run) return;
       timer?.cancel();
@@ -142,10 +205,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       setState(() => error = e is MissingKeyException
           ? 'Manca la chiave gratuita di Google. Collegala nella schermata '
               'principale o nelle Impostazioni.'
-          : (e is GeminiException || e is EbayException)
-              ? e.toString()
-              : 'Qualcosa è andato storto. Controlla la connessione e '
-                  'riprova.\n\n($e)');
+          : e.toString());
     }
   }
 
@@ -233,6 +293,17 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (found != null) ...[
+            Text('Trovato',
+                style: t.textTheme.labelMedium
+                    ?.copyWith(color: t.colorScheme.primary)),
+            const SizedBox(height: 2),
+            Text(found!,
+                textAlign: TextAlign.center,
+                style: t.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+          ],
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             transitionBuilder: (c, a) => FadeTransition(
@@ -261,7 +332,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen>
             ),
           ),
           const SizedBox(height: 10),
-          Text('$seconds s · di solito 15–60 secondi',
+          Text('$seconds s',
               style: t.textTheme.bodySmall
                   ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
         ],
