@@ -45,7 +45,7 @@ void main() {
 
   test('outlier scartati e mediana ponderata', () {
     final items = [
-      for (final p in [90.0, 100, 110, 120, 125, 130, 140]) l('Citizen Duke', p),
+      for (final p in <double>[90, 100, 110, 120, 125, 130, 140]) l('Citizen Duke', p),
       l('Citizen Duke', 5), // fuori scala
       l('Citizen Duke', 2500), // fuori scala
     ];
@@ -61,8 +61,8 @@ void main() {
 
   test('i nuovi pesano meno degli usati', () {
     final items = [
-      for (final p in [100.0, 105, 110]) l('Citizen Duke', p),
-      for (final p in [200.0, 210, 220]) l('Citizen Duke', p, isNew: true),
+      for (final p in <double>[100, 105, 110]) l('Citizen Duke', p),
+      for (final p in <double>[200, 210, 220]) l('Citizen Duke', p, isNew: true),
     ];
     final mp = computeMarketPrice(items,
         brand: 'Citizen', model: 'Duke', query: 'q')!;
@@ -174,7 +174,7 @@ void main() {
     });
     expect(a.displayLikely, 30);
     final mp = computeMarketPrice([
-      for (final p in [90.0, 100, 110, 120, 130]) l('Citizen Duke', p)
+      for (final p in <double>[90, 100, 110, 120, 130]) l('Citizen Duke', p)
     ], brand: 'Citizen', model: 'Duke', query: 'q');
     final b = a.withMarket(mp);
     expect(b.displayLikely, 110);
